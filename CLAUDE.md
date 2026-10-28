@@ -66,7 +66,7 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
    installed change (what, how, expected) and keep working; don't stop to ask for each test. On "it crashed", read
    the logs (d2r-debug skill) before asking anything. A player's crash report goes through the d2r-crash skill and
    knowledge/crash-triage.md. Porting a classic mod goes through the d2r-port skill and
-   knowledge/porting-classic-mods.md.
+   knowledge/porting-classic-mods.md, and only with the mod creators' permission: confirm it with the user first.
 8. **Saves**: back up first; edit only with `modkit save-set`; never hand-write items.
 9. **Plugins are tied to one game image.** Engine addresses belong to build 93847 only (image timestamp
    `0x6ab3782c`); the plugin checks the timestamp and installs nothing on a mismatch. Re-find addresses after any

@@ -86,8 +86,8 @@ clones the closest vanilla row, writes the patch, builds and validates it.
 <td valign="top">
 
 ### 📜 Port a classic mod
-Bring a 1.10 / 1.13c-era mod to D2R: take stock, convert each table, keep the ids D2R hard-codes, redo the old
-engine DLL's rules in a plugin.
+With its creators' permission, bring a 1.10 / 1.13c-era mod to D2R: take stock, convert each table, keep the
+ids D2R hard-codes, redo the old engine DLL's rules in a plugin.
 → [porting guide](knowledge/porting-classic-mods.md)
 
 </td>
@@ -311,7 +311,7 @@ name it ("use d2r-port").
 | [`d2r-engine`](.claude/skills/d2r-engine/SKILL.md) | D2RLoader plugins, new engine functions, Ghidra reverse engineering |
 | [`d2r-debug`](.claude/skills/d2r-debug/SKILL.md) | Crashes, asserts, lost characters, wrong behaviour: logs, symptom to cause, bisecting |
 | [`d2r-crash`](.claude/skills/d2r-crash/SKILL.md) | A player's crash report: addresses to functions, who caused it, a fix with evidence |
-| [`d2r-port`](.claude/skills/d2r-port/SKILL.md) | Port a classic 1.10 / 1.13c-era mod to D2R, table by table, with its DLL rules in a plugin |
+| [`d2r-port`](.claude/skills/d2r-port/SKILL.md) | Port a classic 1.10 / 1.13c-era mod to D2R (with its creators' permission), table by table, with its DLL rules in a plugin |
 | [`d2r-coordinator`](.claude/skills/d2r-coordinator/SKILL.md) | Plan and run a project with several agents: lanes, models, game slots, bug list, review |
 | [`d2r-release`](.claude/skills/d2r-release/SKILL.md) | Ship a version: bump, player changelog, fail-fast publish, verify, release pages |
 
@@ -442,9 +442,10 @@ Point your agent's instruction file (for example `AGENTS.md`) at `CLAUDE.md` and
 <details>
 <summary><b>Can I use this to port an existing classic mod?</b></summary>
 
-Yes. That's where most of the knowledge comes from. Start with the `d2r-port` skill and
-[porting-classic-mods.md](knowledge/porting-classic-mods.md). Get permission from the mod's authors before you
-publish a port.
+Yes, with permission from the mod creators. A mod is its creators' work: ask them before you start, and follow
+their terms on credit and on whether and where the port may be published. If they say no, or you can't reach
+them, don't port it. With permission, start with the `d2r-port` skill and
+[porting-classic-mods.md](knowledge/porting-classic-mods.md). That's where most of the knowledge comes from.
 </details>
 
 <details>

@@ -1,7 +1,7 @@
 # Porting a classic (1.13c-era) mod to D2R 3.x
 
 How to move a classic Diablo II mod (1.10 / 1.13c, with or without its own engine DLL) onto Diablo II: Resurrected
-3.3 with D2RLoader. Learned from a large classic-to-D2R overhaul port. Every example here is vanilla; the
+3.3 with D2RLoader. **Only port a mod whose creators allow it** (see the first rule below). Learned from a large classic-to-D2R overhaul port. Every example here is vanilla; the
 numbers are for D2R 3.3.0 build 93847 unless marked otherwise.
 
 Read with: [tables.md](tables.md) (how D2R reads tables), [engine-limits.md](engine-limits.md) (what D2R hard-codes),
@@ -13,7 +13,7 @@ Read with: [tables.md](tables.md) (how D2R reads tables), [engine-limits.md](eng
 | Rule | Why |
 |---|---|
 | **Follow the original mod, not D2R.** Where the two disagree on a rule, the original mod wins; note every place where you could not follow it | Players of the original know its rules; "D2R does it differently" is a bug report waiting to happen |
-| **Get the mod team's permission** | It is their work |
+| **Port only with the mod creators' permission.** Ask before any work starts, keep their answer, and follow their terms (credit, whether and where the port may be published, what may be changed). No answer or a no means no port | The mod is their work; a port without permission takes it from them |
 | **Never ship Blizzard's files or the original mod's archives** in your repo | Players own D2R; the original mod's files come from its own release |
 | **HD first.** Make every feature work in HD graphics; classic graphics (the G key) come later | Almost every D2R player plays in HD, and both modes load different files |
 | **Stand-in art first, custom art last.** Give every new monster, missile and item the closest vanilla look until the rules work | Art is the biggest single job; gameplay bugs are found faster with a playable build |

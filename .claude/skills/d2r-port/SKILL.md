@@ -1,6 +1,6 @@
 ---
 name: d2r-port
-description: Port a classic Diablo II mod (1.10 / 1.13c era, with or without its own engine DLL) to Diablo II Resurrected 3.x with D2RLoader - inventory the mod, convert its tables row by row into D2R's layout, keep D2R's own ids where the engine hard-codes them, move function numbers D2R 3.x took, re-do the engine DLL's rules in a plugin, then strings, sounds and graphics (HD first, stand-in art first). Use when someone wants to bring an existing classic mod, its tables or its DLL features to D2R, or asks why a converted classic table misbehaves.
+description: Port a classic Diablo II mod (1.10 / 1.13c era, with or without its own engine DLL), only with its creators' permission, to Diablo II Resurrected 3.x with D2RLoader - inventory the mod, convert its tables row by row into D2R's layout, keep D2R's own ids where the engine hard-codes them, move function numbers D2R 3.x took, re-do the engine DLL's rules in a plugin, then strings, sounds and graphics (HD first, stand-in art first). Use when someone wants to bring an existing classic mod, its tables or its DLL features to D2R, or asks why a converted classic table misbehaves.
 ---
 
 # Port a classic mod to D2R
@@ -10,7 +10,9 @@ Read `knowledge/porting-classic-mods.md` first; it has the rules and the worked 
 
 ## Policy (tell the user, then follow it)
 - Follow the original mod, not D2R, when their rules disagree. List every rule you could not follow.
-- Get the mod team's permission. Never commit Blizzard's files or the mod's archives.
+- **Permission first.** Before any work, ask the user whether the mod's creators allow the port and on what terms
+  (credit, publishing). Without their permission, stop and say why. Follow their terms throughout.
+- Never commit Blizzard's files or the mod's archives.
 - HD first; classic graphics later. Stand-in vanilla art first, custom art last.
 - Keep an unported list (feature, why, what players see) in the mod project.
 - First milestone: a new character in Act 1. Then work from what breaks.

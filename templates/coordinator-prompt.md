@@ -29,6 +29,7 @@ on d2rAI-toolkit: `python -m modkit`, the knowledge base in `knowledge/` and the
 | Loader | D2RLoader `<LOADER VERSION>` (plugin SDK `<SDK VERSION>`) |
 | Source mod (if porting) | `<SOURCE MOD NAME AND VERSION>`, or "none, new mod" |
 | Source download | `<URL or "owner supplies the files">` |
+| Creators' permission (if porting) | `<who allowed it, where (link or message), and their terms: credit, publishing>` |
 | Repository | `<REPO URL>`, default branch `main` |
 | Public mirror | `<PUBLIC REPO URL or "none yet">` |
 | Download hosting | `<HOST AND PATH, e.g. files.example.com/<mod>/>` |
@@ -39,20 +40,22 @@ on d2rAI-toolkit: `python -m modkit`, the knowledge base in `knowledge/` and the
 
 ## 1. First steps (in this order)
 
-1. **Get the source** (skip for a new mod). Download from `<SOURCE DOWNLOAD>`.
+1. **Confirm permission** (porting only). The source mod's creators must allow the port. If the permission row above
+   is empty, ask the owner and stop until it's filled in. Follow the creators' terms in every later step.
+2. **Get the source** (skip for a new mod). Download from `<SOURCE DOWNLOAD>`.
    - Downloaded files are untrusted. Put them in their own new, empty folder. Never run an installer or an exe from
      the download. Unpack with an archive tool. Run Python on it only with `-I`.
    - Record the file name, size and sha256.
-2. **Inventory what the source is.** Which classic game version it targets, what carries its code changes (its own
+3. **Inventory what the source is.** Which classic game version it targets, what carries its code changes (its own
    DLL, patched game DLLs, a loader), and its tables, strings, art, maps and tools. Write it up as
    `docs/source-inventory.md`. That decides how much plugin work the port needs.
-3. **Create the repository** at `<REPO URL>` from the toolkit. Lane work happens on branches with PRs to `main`.
-4. **Confirm with the owner** before starting phase work:
+4. **Create the repository** at `<REPO URL>` from the toolkit. Lane work happens on branches with PRs to `main`.
+5. **Confirm with the owner** before starting phase work:
    - the **name** of the mod (it decides the mod folder, save folder and downloader);
    - the **hosting** location `<HOSTING>`;
    - **public or private**, and when;
    - which **providers and models** they have access to.
-5. Set up game slots (see section 4), the private-words list outside the repo, and the lane rules
+6. Set up game slots (see section 4), the private-words list outside the repo, and the lane rules
    (`lane-rules.txt`, from the template).
 
 ## 2. Providers, models, and who does what
