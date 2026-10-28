@@ -1,0 +1,46 @@
+{
+  "ops": [
+    {
+      "op": "skill",
+      "name": "Frost Cyclone",
+      "replace": "Double Throw",
+      "clone": "Whirlwind",
+      "skills": {
+        "EType": "cold",
+        "EMin": 4,
+        "EMax": 8,
+        "ELen": 75
+      },
+      "text": {
+        "name": "Frost Cyclone",
+        "short": "Frost Cyclone",
+        "long": "Spin through enemies, chilling everything you hit",
+        "alt": "Frost Cyclone"
+      },
+      "icon": "assets/frost_cyclone.png",
+      "hdSequenceLike": "Whirlwind"
+    },
+    {
+      "op": "skill",
+      "name": "Frost Spear",
+      "clone": "Ice Bolt",
+      "class": "",
+      "missiles": [
+        {
+          "name": "frostspear",
+          "clone": "icebolt",
+          "set": {
+            "Vel": 30
+          }
+        }
+      ],
+      "skills": {
+        "srvmissile": "frostspear",
+        "cltmissile": "frostspear"
+      },
+      "text": {
+        "name": "Frost Spear"
+      }
+    }
+  ]
+}

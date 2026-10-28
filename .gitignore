@@ -1,0 +1,23 @@
+d2r-data/
+build/
+**/out/
+__pycache__/
+*.pyc
+plugin-template/build/
+
+# Never commit game data, dumps, saves or local build output
+*.dmp
+*.mdmp
+*.d2s
+*.d2i
+*.d2rl
+saves/
+dumps/
+dump/
+out/
+.venv/
+.vs/
+*.log
+
+# Local scanner configuration
+private_terms.txt

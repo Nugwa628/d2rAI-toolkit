@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="t d">
+  <title id="t">d2rAI-toolkit architecture</title>
+  <desc id="d">You describe a change. An AI agent, guided by CLAUDE.md, the skills and the knowledge base, uses the toolkit's parts (modkit, plugin template, testing, release, downloader). They read the game from your own install and write a mod folder, test copies and a release that players install with the downloader.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#15110e"/>
+      <stop offset="1" stop-color="#0b0908"/>
+    </linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#c8913a"/>
+    </marker>
+    <marker id="arrDim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#7d6a4c"/>
+    </marker>
+    <style>
+      .box  { fill: #1b1511; stroke: #6b4a1c; stroke-width: 1.5; }
+      .hot  { fill: #241a10; stroke: #c8913a; stroke-width: 2; }
+      .ext  { fill: #121417; stroke: #4a5560; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .chip { fill: #2c2016; stroke: #8a6224; stroke-width: 1; }
+      .h    { font: 700 17px Georgia, "Times New Roman", serif; fill: #f0c060; }
+      .hs   { font: 700 15px Georgia, "Times New Roman", serif; fill: #f0c060; }
+      .t    { font: 13px "Segoe UI", Helvetica, Arial, sans-serif; fill: #d8c8a8; }
+      .m    { font: 13px Consolas, Menlo, monospace; fill: #ffb347; }
+      .dim  { font: 12px "Segoe UI", Helvetica, Arial, sans-serif; fill: #8a7a60; }
+      .lane { font: 700 12px "Segoe UI", Helvetica, Arial, sans-serif; fill: #8a7a60; letter-spacing: 2px; }
+      .a    { stroke: #c8913a; stroke-width: 1.8; fill: none; marker-end: url(#arr); }
+      .ad   { stroke: #7d6a4c; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrDim); }
+    </style>
+  </defs>
+
+  <rect width="1200" height="640" fill="url(#bg)"/>
+  <rect x="8" y="8" width="1184" height="624" fill="none" stroke="#3a2a14"/>
+
+  <text class="lane" x="28" y="34">ASK</text>
+  <text class="lane" x="28" y="262">TOOLS</text>
+  <text class="lane" x="28" y="482">FILES</text>
+
+  <!-- row 1: ask -->
+  <rect class="box" x="28" y="50" width="220" height="150" rx="10"/>
+  <text class="h" x="46" y="82">You</text>
+  <text class="t" x="46" y="110">"Add a frost Whirlwind</text>
+  <text class="t" x="46" y="128">for the Barbarian, with</text>
+  <text class="t" x="46" y="146">its own icon."</text>
+  <text class="dim" x="46" y="182">a plain-language prompt</text>
+
+  <rect class="hot" x="296" y="40" width="568" height="170" rx="12"/>
+  <text class="h" x="316" y="72">AI agent (Claude Code or another coding agent)</text>
+  <rect class="chip" x="316" y="88" width="168" height="104" rx="8"/>
+  <text class="m" x="330" y="114">CLAUDE.md</text>
+  <text class="t" x="330" y="138">rules: data first,</text>
+  <text class="t" x="330" y="156">build and validate,</text>
+  <text class="t" x="330" y="174">no game files in git</text>
+  <rect class="chip" x="496" y="88" width="168" height="104" rx="8"/>
+  <text class="m" x="510" y="114">.claude/skills/</text>
+  <text class="t" x="510" y="138">step-by-step guides:</text>
+  <text class="t" x="510" y="156">skills, items, UI,</text>
+  <text class="t" x="510" y="174">engine, crash, port</text>
+  <rect class="chip" x="676" y="88" width="168" height="104" rx="8"/>
+  <text class="m" x="690" y="114">knowledge/</text>
+  <text class="t" x="690" y="138">engine limits, tables,</text>
+  <text class="t" x="690" y="156">HD art, saves, build</text>
+  <text class="t" x="690" y="174">93847 addresses</text>
+
+  <rect class="box" x="912" y="50" width="260" height="150" rx="10"/>
+  <text class="h" x="930" y="82">Many agents at once</text>
+  <text class="t" x="930" y="110">a coordinator and parallel</text>
+  <text class="t" x="930" y="128">lanes, one branch and</text>
+  <text class="t" x="930" y="146">one PR per job</text>
+  <text class="m" x="930" y="172">docs/ai-workflow.md</text>
+  <text class="m" x="930" y="190">templates/</text>
+
+  <path class="a" d="M248 125H292"/>
+  <path class="ad" d="M908 125H868"/>
+
+  <!-- agent drives the tools -->
+  <path class="a" d="M400 210V234H135V274"/>
+  <path class="a" d="M440 210V274"/>
+  <path class="a" d="M580 210V274"/>
+  <path class="a" d="M720 210V234H825V274"/>
+  <path class="a" d="M800 210V226H1060V274"/>
+
+  <!-- row 2: tools -->
+  <rect class="box" x="28" y="278" width="214" height="150" rx="10"/>
+  <text class="m" x="44" y="306">modkit/</text>
+  <text class="t" x="44" y="330">JSON patches: build,</text>
+  <text class="t" x="44" y="348">validate, install</text>
+  <text class="t" x="44" y="372">tables, strings, layouts,</text>
+  <text class="t" x="44" y="390">sprites, HD maps, saves</text>
+  <text class="dim" x="44" y="414">python -m modkit</text>
+
+  <rect class="box" x="258" y="278" width="214" height="150" rx="10"/>
+  <text class="m" x="274" y="306">plugin-template/</text>
+  <text class="t" x="274" y="330">D2RLoader plugin (C++)</text>
+  <text class="t" x="274" y="348">for what data can't do</text>
+  <text class="t" x="274" y="372">build and environment</text>
+  <text class="t" x="274" y="390">guards, off-switch, hooks</text>
+  <text class="dim" x="274" y="414">plus Ghidra scripts in tools/</text>
+
+  <rect class="box" x="488" y="278" width="214" height="150" rx="10"/>
+  <text class="m" x="504" y="306">testing/</text>
+  <text class="t" x="504" y="330">game slots: queued</text>
+  <text class="t" x="504" y="348">copies of the game</text>
+  <text class="t" x="504" y="372">window-message control,</text>
+  <text class="t" x="504" y="390">named checks, screenshots</text>
+  <text class="dim" x="504" y="414">no real mouse or keyboard</text>
+
+  <rect class="box" x="718" y="278" width="214" height="150" rx="10"/>
+  <text class="m" x="734" y="306">release/</text>
+  <text class="t" x="734" y="330">7z, manifest and</text>
+  <text class="t" x="734" y="348">content-addressed files</text>
+  <text class="t" x="734" y="372">delta upload, CDN,</text>
+  <text class="t" x="734" y="390">release pages</text>
+  <text class="dim" x="734" y="414">release.sh, fail-fast</text>
+
+  <rect class="box" x="948" y="278" width="224" height="150" rx="10"/>
+  <text class="m" x="964" y="306">downloader/</text>
+  <text class="t" x="964" y="330">player installer and</text>
+  <text class="t" x="964" y="348">updater (one Win32 exe)</text>
+  <text class="t" x="964" y="372">your name, colors, logo</text>
+  <text class="t" x="964" y="390">in one header file</text>
+  <text class="dim" x="964" y="414">checks game and loader</text>
+
+  <!-- row 3: files -->
+  <rect class="ext" x="28" y="498" width="214" height="120" rx="10"/>
+  <text class="hs" x="44" y="526">Your D2R install</text>
+  <text class="t" x="44" y="550">read only (CASC), cached</text>
+  <text class="t" x="44" y="568">in d2r-data/ (git-ignored)</text>
+  <text class="dim" x="44" y="602">never in the repo</text>
+
+  <rect class="hot" x="258" y="498" width="214" height="120" rx="10"/>
+  <text class="hs" x="274" y="526">mods/&lt;YourMod&gt;/</text>
+  <text class="t" x="274" y="550">only what you changed,</text>
+  <text class="t" x="274" y="568">plus plugin DLLs</text>
+  <text class="dim" x="274" y="602">started by D2RLoader</text>
+
+  <rect class="ext" x="488" y="498" width="214" height="120" rx="10"/>
+  <text class="hs" x="504" y="526">Game slots 2..N</text>
+  <text class="t" x="504" y="550">copies for tests; slot 1</text>
+  <text class="t" x="504" y="568">is your own game and</text>
+  <text class="t" x="504" y="586">is never touched</text>
+
+  <rect class="ext" x="718" y="498" width="214" height="120" rx="10"/>
+  <text class="hs" x="734" y="526">Your download site</text>
+  <text class="t" x="734" y="550">channels, manifests,</text>
+  <text class="t" x="734" y="568">objects, 7z; optional CDN</text>
+  <text class="dim" x="734" y="602">files.example.com</text>
+
+  <rect class="box" x="948" y="498" width="224" height="120" rx="10"/>
+  <text class="hs" x="964" y="526">Players</text>
+  <text class="t" x="964" y="550">press Install, then get</text>
+  <text class="t" x="964" y="568">only changed files</text>
+  <text class="dim" x="964" y="602">bug reports come back to you</text>
+
+  <path class="ad" d="M110 494V432"/>
+  <path class="a" d="M170 428V460H330V494"/>
+  <path class="a" d="M400 428V494"/>
+  <path class="a" d="M595 428V494"/>
+  <path class="a" d="M825 428V494"/>
+  <path class="a" d="M1060 428V494"/>
+  <path class="ad" d="M936 558H944"/>
+</svg>

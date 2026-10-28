@@ -1,0 +1,42 @@
+{
+  "ops": [
+    {
+      "op": "layout",
+      "file": "bankexpansionlayouthd.json",
+      "widget": "grid",
+      "set": {
+        "cellCount": {
+          "x": 12,
+          "y": 12
+        },
+        "cellSize": {
+          "x": 98,
+          "y": 92
+        },
+        "rect": {
+          "x": 89,
+          "y": 219,
+          "scale": 0.8
+        }
+      }
+    },
+    {
+      "op": "set",
+      "table": "inventory",
+      "key": "Big Bank Page 1",
+      "set": {
+        "gridX": 12,
+        "gridY": 12
+      }
+    },
+    {
+      "op": "set",
+      "table": "inventory",
+      "key": "Big Bank Page2",
+      "set": {
+        "gridX": 12,
+        "gridY": 12
+      }
+    }
+  ]
+}

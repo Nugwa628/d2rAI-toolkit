@@ -1,0 +1,11 @@
+# /etc/systemd/system/mod-release-sync.path
+# The ingest, `publish_release.py promote` and `gc` rewrite <site>/.sync/wanted when the site changed; this starts the mirror.
+[Unit]
+Description=mod-release: run the bucket sync when the site changed
+
+[Path]
+PathChanged=/srv/mod-files/mymod/.sync/wanted
+Unit=mod-release-sync.service
+
+[Install]
+WantedBy=multi-user.target

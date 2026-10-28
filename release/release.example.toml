@@ -1,0 +1,96 @@
+# release.toml: the one config file for every script in release/ (package_release.py, publish_release.py,
+# github_release.py, release.sh, and the values you give the server scripts).
+#
+# Copy this file to release.toml next to your project (or anywhere, then pass --config PATH) and change the values.
+# Everything here is a placeholder: "My Mod", "MyMod", files.example.com, <your-server>. The scripts refuse to upload to
+# a target that still contains "<your-server>".
+# Command-line options beat environment variables, which beat this file.
+
+[mod]
+name = "My Mod"                  # shown to players (the manifest's "name")
+folder = "MyMod"                 # the folder under <D2R>/mods/ and the top folder of the 7z. One plain word.
+save_folder = "MyMod/"           # modinfo.json "savepath": the save folder under Saved Games/Diablo II Resurrected/mods/
+website = "https://example.com/your-name/your-mod"
+
+[game]
+version = "3.3.0"                # D2R's version (for the release notes)
+build = "93847"                  # the D2R build your plugin needs (manifest d2r.build)
+image_timestamp = ""             # optional: PE TimeDateStamp of that D2R.exe, e.g. "0x6ab3782c" for 93847
+
+# The D2RLoader your release needs. The downloader compares "version" with the player's D2RLoader.exe and shows a
+# button to the site; it never downloads D2RLoader. size and sha256 are informational: fill them in from the file you
+# tested with.
+[d2rloader]
+version = "1.3.1-beta"
+url = "https://d2rloader.net/"
+size = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+signerThumbprint = ""
+
+# What the player's D2RLoader config needs so that the mod starts by itself (manifest "launch").
+[launch]
+default_mod = "MyMod"
+launch_arguments = ""
+
+[package]
+dist = "dist"                              # package_release.py writes here
+plugin_dir = "d2rloader/plugins"           # package_release.py --plugin DLL copies the DLL here (inside the mod folder)
+plugin_forbidden_strings = ["testharness"] # a release DLL that contains one of these is refused
+# Files the player may edit. The downloader writes them only when they are missing and never overwrites or deletes them.
+preserve = ["d2rloader/config/d2rloader.toml"]
+# Files that must never ship: regular expressions (case-insensitive) on the path inside the mod folder. The run stops
+# when one matches. Test harness files, ImGui and debug settings, saves and their sidecars, logs, dumps.
+forbidden = [
+  '(^|/)[^/]*testharness[^/]*$',
+  '(^|/)(imgui\.ini|debugsettings\.json|input-bindings\.toml)$',
+  '\.(d2s|d2i|d2x|d2rl|ctc|ctl|key|map|ma\d|log|dmp|pdb|orig)$',
+]
+# For --game-extract DIR: the game's own files are left out when they are byte copies. Their place in the mod folder:
+data_dir = "{folder}.mpq/data"
+keep_identical = ["global/dataversionbuild.txt"]   # written by you, so keep it even when it equals the game's
+
+[downloader]
+exe_name = "MyMod-Downloader.exe"          # the file name players get; the manifest's "launcher" entry points at it
+exe = "build/downloader/Release/MyMod-Downloader.exe"   # release.sh publishes this with every release
+min_version = ""                           # optional: the oldest downloader that can install this release ("launcherMin")
+
+[site]
+url = "https://files.example.com/mymod/"   # the site root players' downloaders read; must end in "/"
+# Upload target: sftp://user@host[:port]/path (the server-side path, i.e. inside the chroot), or dir:<folder> for a
+# local test. MODKIT_PUBLISH_TARGET in the environment replaces this.
+target = "sftp://modrelease@<your-server>/mymod"
+identity = ""                              # ssh private key, e.g. "~/.ssh/mymod_publish"
+incoming = "../incoming"                   # where uploads wait for the server's check, next to the site root, never served
+channels = ["stable", "test"]
+publish_channel = "test"                   # release.sh publishes to this one first ...
+promote_channel = "stable"                 # ... and promotes to this one after the checks
+
+# The download host. These values are for you to copy into the server's systemd units (release/server/*) and the
+# ingest command line; the scripts on your PC do not read this section.
+[server]
+root = "/srv/mod-files"                           # holds incoming/ and the site folder
+site_dir = "mymod"                         # the site folder under root: /srv/mod-files/mymod is served as site.url
+user = "modrelease"                             # the upload user (chroot sftp, no shell)
+
+# Optional: an S3-compatible copy of the site (any provider rclone knows), e.g. behind a CDN or the Cloudflare Worker
+# in release/cloudflare-worker.js. release/dl_sync.py reads these as command-line options, see release/CDN.md.
+[mirror]
+enabled = false
+endpoint = "s3.example.com"
+bucket = "my-mod-files"
+prefix = "mymod"                           # the site is copied to <bucket>/<prefix>/
+rclone_remote = "mirror"                   # the [mirror] section of the server's rclone.conf
+rclone_config = "/etc/mod-release/rclone.conf"
+acl = "public-read"                        # "" for a provider without object ACLs
+
+# Release pages: github_release.py turns the "### <version>" section of the changelog into a GitHub or Forgejo release.
+# Tokens come from the environment variable, else the token file. They are never printed.
+[repos]
+changelog = "CHANGELOG.md"
+github = "your-name/your-mod"
+github_token_env = "MODKIT_GITHUB_TOKEN"
+github_token_file = "~/.d2r-modkit/github_token"
+forgejo_url = "https://forge.example.com"
+forgejo = "your-name/your-mod"
+forgejo_token_env = "MODKIT_FORGEJO_TOKEN"
+forgejo_token_file = "~/.d2r-modkit/forgejo_token"

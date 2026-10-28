@@ -1,0 +1,12 @@
+# /etc/systemd/system/mod-release-ingest.path
+# Starts mod-release-ingest.service when something changes in the incoming folder: the publisher renames
+# incoming/<version>.uploading to incoming/<version> as its last step.
+[Unit]
+Description=mod-release: run the ingest when an upload is complete
+
+[Path]
+PathChanged=/srv/mod-files/incoming
+Unit=mod-release-ingest.service
+
+[Install]
+WantedBy=multi-user.target

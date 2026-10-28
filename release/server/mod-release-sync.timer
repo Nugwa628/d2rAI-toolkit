@@ -1,0 +1,12 @@
+# /etc/systemd/system/mod-release-sync.timer
+# Fallback for the path unit: also sync every 30 minutes.
+[Unit]
+Description=mod-release: periodic bucket sync (fallback)
+
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=30min
+Unit=mod-release-sync.service
+
+[Install]
+WantedBy=timers.target

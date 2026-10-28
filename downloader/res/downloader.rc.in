@@ -1,0 +1,30 @@
+// CMake turns this template into the resource script: version info, the application manifest (common controls v6,
+// per-monitor DPI, long paths, asInvoker, so no elevation prompt) and the optional pictures.
+// No SDK headers: the constants are written out, so llvm-rc can compile it too.
+
+1 24 "@DL_MANIFEST_FILE@"  // 24 = RT_MANIFEST
+1 ICON "@DL_ICON_FILE_RC@"
+@DL_RC_PICTURES@
+1 VERSIONINFO  // 1 = VS_VERSION_INFO
+ FILEVERSION @DL_VERSION_NUM@
+ PRODUCTVERSION @DL_VERSION_NUM@
+ FILEOS 0x40004  // VOS_NT_WINDOWS32
+ FILETYPE 0x1  // VFT_APP
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040904b0"
+		BEGIN
+			VALUE "CompanyName", "@DL_COMPANY@"
+			VALUE "FileDescription", "@DL_MOD_NAME@ Downloader"
+			VALUE "FileVersion", "@DL_VERSION@"
+			VALUE "ProductName", "@DL_MOD_NAME@"
+			VALUE "ProductVersion", "@DL_VERSION@"
+			VALUE "OriginalFilename", "@DL_EXE_NAME@.exe"
+		END
+	END
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x409, 1200
+	END
+END

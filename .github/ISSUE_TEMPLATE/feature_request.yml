@@ -1,0 +1,29 @@
+name: Feature request
+description: A new patch op, skill, tool, or knowledge page.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What do you want to do?
+      description: Describe the modding task, not only the solution. "I want new runewords to show up in the cube recipes" is better than "add op X".
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
+      description: Hand edits, another tool, a workaround the agent had to invent.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: A sketch of the op, command or skill, if you have one.
+      render: text
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Data or code?
+      options:
+        - label: I checked that no vanilla function or column already does this (knowledge/engine-limits.md, modkit functions).

@@ -1,0 +1,14 @@
+# False positives for tools/check_public.py generic checks (private-term hits cannot be allowed).
+# One entry per line:   <path glob>            allow every generic hit in matching files
+#                       <path glob> :: <regex> allow only hits whose text or line matches the regex
+# Paths are repo-relative with forward slashes. Keep this list short and explain each entry.
+
+# The scanner's own tests contain fake addresses, paths and tokens on purpose.
+tests/test_check_public.py
+
+# Four-part version numbers in the downloader (D2RLoader file versions, the exe manifest) look like IPv4 addresses, and
+# so do the "<x.y.z>.7z" archive names in the release tests. Only that shape is allowed, nothing else in those files.
+downloader/** :: \b\d+\.\d+\.\d+\.\d+\b
+tests/test_release_*.py :: \d+\.\d+\.\d+\.7z
+# A made-up token that the release-notes test passes in to prove it is never printed.
+tests/test_release_notes.py :: SECRET-TOKEN

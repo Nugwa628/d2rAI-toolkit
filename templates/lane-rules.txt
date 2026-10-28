@@ -1,0 +1,68 @@
+COMMON RULES FOR EVERY LANE of <MOD NAME> (Diablo II: Resurrected <GAME VERSION> + D2RLoader <LOADER VERSION>).
+Copy this file to your runs folder, replace the <PLACEHOLDERS>, and add rules as you learn them (with a date).
+Every lane prompt starts with: "Read <path>/lane-rules.txt and follow it exactly."
+
+START
+- FIRST: `git fetch origin && git checkout -b lane/<name> origin/main`. Your worktree may start on another branch;
+  never build on top of anything but origin/main unless your task says so. Run `git lfs pull` if asset files are
+  pointer text.
+- Read the docs your task names, plus docs/bugs.md (your bug's row) and docs/PLAN.md, before writing code.
+- Only touch the files your task owns. If you find another problem, put it in your report; do not fix it.
+
+SAFETY
+- Never commit game files, dumps, extracted tables, saves, or screenshots of the game. Game files are only read from
+  the user's install.
+- Nothing in the repo may name a private project, a person, an e-mail, a host or an IP. Use placeholders such as
+  `files.example.com`. Before every commit run `python tools/check_public.py`; it must print nothing.
+- Never print, echo, log or commit a token or key. Scripts read them from files in the home folder
+  (`P=$(cat ~/.<mod>/api_token)`). Do not read other tools' or sessions' keys.
+- Never touch the owner's real game install (slot 1). Never move, rename or delete saves of characters you did not
+  create; use your own throwaway characters.
+- Ask the coordinator before anything public, paid or destructive.
+
+GIT
+- Commit identity (noreply only, never a real e-mail):
+  `git -c user.name="<HANDLE>" -c user.email="<NOREPLY ADDRESS>" commit`
+- Commit messages: a short subject, the bug number if any, then a blank line and
+  `Co-Authored-By: <your model name> <noreply@anthropic.com>`
+- Push your branch and open a PR to `main` through the forge API. PR body: what changed, how it was tested, what is
+  left. End it with "🤖 Generated with [Claude Code](https://claude.com/claude-code)".
+  API: <FORGE API URL>/repos/<OWNER>/<REPO>/pulls
+- DO NOT MERGE. The coordinator reviews and merges.
+- Large file pushes: <FORGE-SPECIFIC NOTE, e.g. limits and how to push, or delete this line>.
+
+GAME SLOTS AND TESTS
+- Tests run in the background only. Never use SendInput, SetCursorPos, SetForegroundWindow or anything that steals
+  the mouse, keyboard or focus.
+- Game slots <N, N> are shared by many lanes and are queued, never added. Hold a slot for your whole game session:
+  `python testing/game_slots.py lock N <lane>`. Run checks with the run id set to your lane name (`MODKIT_RUN=<lane>`) so runs don't release
+  your lock. Restore the slot afterwards, then `python testing/game_slots.py unlock N <lane>` straight away: others
+  are waiting.
+- If every slot is locked, do NOT end your turn: poll `game_slots.py status` in a bounded wait loop (a few minutes at
+  a time, up to about 30 minutes) and continue as soon as one is free.
+- Put the slot number inline on EVERY command that can touch saves or a game folder (for example
+  `MODKIT_SLOT=3 python ...`). Shell state does not persist between tool calls, and tools default to slot 1.
+- Check `game_slots.py status` before and after your session.
+- Install only with the install script (or a script that STOPS when the slot lock fails). Never copy files into a
+  slot you do not hold the lock for; check the lock is still yours right before installing.
+- Kill only processes you started yourself (by PID). Never kill by a broad name filter.
+- Test only what your change touches: map your changed files to their checks and run those, plus the build
+  validator and unit tests. Do not run the full suite unless your task says so.
+- Test what players get: for player-facing changes, also run once on a release-like install, not only the developer
+  install.
+
+DON'T GO IDLE
+- Never end your turn while a build, install, download or game run you started is still going. Wait for it in the
+  same turn (blocking wait or a poll loop with a timeout). Ending your turn ends your lane.
+- Do not message other agents or sessions. Report slot or save incidents in your final report.
+
+DOCS AND VERSIONS
+- Keep docs in step with your change (docs/bugs.md row, the relevant knowledge/ or docs/ file, TESTING notes).
+- Do not bump the release version; the coordinator does that when merging. (If your task says to, take the next
+  free number after main's, and merge origin/main first.)
+
+REPORT (final message)
+- PR URL, head commit SHA, CI state.
+- Files changed (short list) and what each does.
+- Tests run and their results (paste the summary lines).
+- What is left, open questions, and any incident (slot, save, tool problem).

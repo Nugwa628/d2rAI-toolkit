@@ -1,0 +1,6 @@
+[submodule "third_party/CascLib"]
+	path = third_party/CascLib
+	url = https://github.com/ladislav-zezula/CascLib
+[submodule "third_party/PluginSDK"]
+	path = third_party/PluginSDK
+	url = https://github.com/D2RLoader/PluginSDK

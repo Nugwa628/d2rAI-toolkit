@@ -1,0 +1,96 @@
+# Config for the testing tools (testing/*.py). Copy to ./modkit-testing.toml and edit.
+# Found by: --config FILE, then the environment variable MODKIT_TESTING_CONFIG, then ./modkit-testing.toml.
+# Relative paths are relative to this file. "~" is your home folder. A JSON file with the same keys also works.
+# Every key below is optional except game.install_dir and game.slots_dir; the values shown are the defaults.
+
+[game]
+# Slot 1: YOUR OWN game. The tools read it (to make copies) and never write, start or lock it.
+install_dir = "C:/Program Files (x86)/Diablo II Resurrected"
+# Slot 2, 3, ... are copies of that install, one folder each: <slots_dir>/<slot_dir_template>.
+slots_dir = "D:/d2r-slots"
+slot_dir_template = "slot-{slot}"
+# slot_dirs = { "2" = "E:/somewhere/else" }    # optional: a slot in its own folder
+slot_count = 3                                  # slots 1..3 (slot 1 is yours, 2 and 3 are for tests)
+loader_exe = "D2RLoader.exe"                    # slot N >= 2 runs a copy named D2RLoader-sN.exe
+game_exe = "D2R.exe"
+window_title_prefix = ""                        # optional extra filter; the window is found by PID, not by title
+client_size = [1600, 900]                       # the game window's client area is resized to this
+window_origin = [100, 60]                       # window of slot 1 position; each slot is shifted by window_step
+window_step = [60, 40]
+copy_mode = "copy"                              # "copy", or "hardlink" for the big read-only folders in link_dirs
+link_dirs = ["Data"]
+exclude = ["Logs"]                              # top-level names that are not copied
+mods_policy = "skip"                            # "skip": the mods folder is filled by your install script
+
+[mod]
+name = "My Mod"
+folder = "MyMod"                                # <game>/mods/MyMod
+plugins_subdir = "d2rloader/plugins"            # inside the mod folder
+plugin_dlls = ["my-plugin.dll"]                 # checked by the config-sane example check
+modinfo_files = ["{folder}.mpq/modinfo.json", "modinfo.json"]   # savepath is written into these (inside the mod folder)
+
+[saves]
+root = "~/Saved Games/Diablo II Resurrected/mods"
+slot1_name = "{folder}"                         # your own characters
+slot_name = "{folder}-s{slot}"                  # slot 2 saves into MyMod-s2/
+
+[loader]
+config_file = "d2rloader/config/d2rloader.toml" # inside the game folder (each slot has its own copy)
+section = "d2rloader"
+default_mod_key = "default_mod"
+args_key = "launch_arguments"
+set_default_mod = true                          # setup writes default_mod = mod.folder into the slot's copy
+
+[logs]
+loader_log = "d2rloader/logs/d2rloader.log"     # inside the game folder
+plugin_log = ""                                 # optional, e.g. "mods/{folder}/d2rloader/logs/my-plugin.log"
+crash_dir = "d2rloader/crashes"
+startup_line = "D2R startup complete."          # appears in loader_log when the game is up
+
+[harness]
+# The plugin's test harness. Your plugin must follow the protocol in docs/testing.md ("The harness protocol").
+# These names and numbers are the contract: change them here AND in the plugin, nowhere else.
+shm_name = "Local\\my-harness-block-{pid}"  # shared memory, one block per game process
+shm_name_shared = ""                            # optional fallback name without a PID
+magic = 0x4D4B5448
+block_bytes = 576
+command_offset = 64                             # byte offset of the command text
+command_max = 500
+idx_magic = 0
+idx_active = 1
+idx_x = 2
+idx_y = 3
+idx_buttons = 4
+idx_mods = 5
+idx_seq = 6
+idx_flags = 7
+idx_cmd_seq = 8
+idx_cmd_ack = 9
+idx_cmd_result = 10
+flag_background = 1                             # value for idx_flags: do not bring the game window to the front
+word_file = "my-testharness.txt"                # in the plugins folder; its presence turns the harness on
+console_file = "my-testharness-console.txt"     # in the plugins folder; the plugin appends command output here
+words = []                                      # words written into word_file, "{slot}" is replaced, e.g. ["tag=s{slot}"]
+cursor_start = [800, 450]
+
+[runs]
+dir = "~/modkit-runs"                           # locks (game.lock.N), run folders, release-install state
+screenshots_dir = "screenshots"                 # inside <runs.dir>/<run id>/
+
+[checks]
+modules = ["example_checks"]                    # modules that register checks with @check
+paths = []                                      # extra folders to find them in (e.g. ["my-checks"])
+start_timeout = 120                             # seconds to wait for the startup line
+echo_command = "echo modkit-check"              # used by the console-echo example check
+menu_min_mean = 6.0                             # main-menu-visible: a screen counts as "not blank" above these
+menu_min_stddev = 8.0
+
+[release]
+site_url = "https://files.example.com/my-mod/"  # or "dir:C:/path/to/a/local/site" for tests without a network
+channel = "stable"
+seven_zip = ""                                  # path to 7z.exe; "" = PATH, then C:\Program Files\7-Zip
+apply_launch = true                             # write the release's launch keys into the slot's loader config
+extra_launch_args = "-w"                        # added to launch_arguments (windowed, so the harness can capture it)
+channel_schema = 1                              # accepted schemaVersion of the channel file (0 = do not check)
+manifest_schema = 2                             # accepted schemaVersion of the manifest (0 = do not check)
+retries = 3

@@ -1,0 +1,40 @@
+# /etc/systemd/system/mod-release-sync.service
+# Mirrors the site folder to an S3-compatible bucket (dl_sync.py, rclone). Optional: skip it when you serve the site
+# folder directly. Change: User/Group, --site, --remote (remote:bucket/prefix) and --config (rclone.conf, see CDN.md).
+# Add --acl "" for a provider without object ACLs.
+[Unit]
+Description=mod-release: copy the site to the S3 bucket (dl_sync.py)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=modrelease
+Group=modrelease
+UMask=0022
+StateDirectory=mod-release-sync
+StateDirectoryMode=0750
+ExecStart=/usr/bin/python3 -I /opt/mod-release/dl_sync.py --site /srv/mod-files/mymod --remote mirror:my-mod-files/mymod --config /etc/mod-release/rclone.conf
+Nice=5
+IOSchedulingClass=idle
+TimeoutStartSec=6h
+ProtectSystem=strict
+ReadOnlyPaths=/srv/mod-files/mymod
+ReadWritePaths=/srv/mod-files/mymod/.sync
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native

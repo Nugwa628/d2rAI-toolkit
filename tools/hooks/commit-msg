@@ -1,0 +1,10 @@
+#!/bin/sh
+# Commit-msg hook: the commit message goes through the same scanner as the files.
+root=$(git rev-parse --show-toplevel) || exit 1
+for py in python3 python "py -3"; do
+	if $py -c "import sys; sys.exit(sys.version_info < (3, 9))" >/dev/null 2>&1; then
+		exec $py "$root/tools/check_public.py" --root "$root" --message-file "$1" --quiet
+	fi
+done
+echo "commit-msg: no Python 3 found, cannot run tools/check_public.py" >&2
+exit 1

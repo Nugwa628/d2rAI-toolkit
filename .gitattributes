@@ -1,0 +1,3 @@
+# Hook scripts run under sh: keep LF endings on every platform
+tools/hooks/* text eol=lf
+*.sh text eol=lf

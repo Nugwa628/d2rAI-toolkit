@@ -1,0 +1,46 @@
+name: Porting help
+description: Questions or problems porting a classic Diablo II mod to D2R.
+title: "[port] "
+labels: ["porting"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [knowledge/porting-classic-mods.md](https://github.com/Nugwa628/d2rAI-toolkit/blob/main/knowledge/porting-classic-mods.md) and try the `d2r-port` skill first.
+        **Don't upload the mod's files or name a mod you don't have permission to port.** Describe the problem with vanilla examples where you can.
+  - type: input
+    id: era
+    attributes:
+      label: Classic version the mod targets
+      placeholder: "1.13c, with its own engine DLL"
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where are you stuck?
+      options:
+        - Taking stock of the mod
+        - Converting tables
+        - Ids or function numbers D2R hard-codes
+        - Re-doing engine DLL rules in a plugin
+        - Strings or sounds
+        - Graphics (HD or classic)
+        - Saves
+        - Crashes in game
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happens?
+      description: What you converted, what you expected, what the game does instead.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Rows, validation output or logs
+      description: A few relevant table rows, out/validation.md, or the D2RLoader log. Remove your user name from paths.
+      render: text

@@ -1,0 +1,22 @@
+# CI: unit tests plus the public-release scan (generic checks only: CI has no private terms file).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest discover tests
+      - name: Public-release scan (e-mails, IPs, user paths, keys, PNG metadata)
+        run: python tools/check_public.py

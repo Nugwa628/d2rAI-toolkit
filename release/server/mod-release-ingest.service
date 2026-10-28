@@ -1,0 +1,36 @@
+# /etc/systemd/system/mod-release-ingest.service
+# Runs dl_ingest.py once over everything waiting in incoming/. Triggered by mod-release-ingest.path, with
+# mod-release-ingest.timer as a fallback. Change: User/Group (your upload user), --root, --site (config server.site_dir) and --channels.
+[Unit]
+Description=mod-release: verify and publish completed uploads (dl_ingest.py)
+
+[Service]
+Type=oneshot
+User=modrelease
+Group=modrelease
+UMask=0022
+ExecStart=/usr/bin/python3 -I /opt/mod-release/dl_ingest.py --root /srv/mod-files --site mymod --channels stable,test
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h
+ProtectSystem=strict
+ReadWritePaths=/srv/mod-files
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+# the ingest has no network: it only writes the trigger file for the mirror
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native

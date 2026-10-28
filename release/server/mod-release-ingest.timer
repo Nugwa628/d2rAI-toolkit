@@ -1,0 +1,12 @@
+# /etc/systemd/system/mod-release-ingest.timer
+# Fallback for the path unit: also run the ingest every 15 minutes, in case an upload completed during a run.
+[Unit]
+Description=mod-release: periodic ingest run (fallback)
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+Unit=mod-release-ingest.service
+
+[Install]
+WantedBy=timers.target
