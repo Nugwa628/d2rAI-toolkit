@@ -11,6 +11,10 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
   reverse engineering, debugging). Read `knowledge/engine-limits.md` before designing anything big, and the topic
   file before working in an area. A whole new game system (for example a mapping system) starts with
   `knowledge/new-game-systems.md`: the data vs plugin split, the hooks, where state lives, the lanes.
+  How the server half behaves (drops, inventory, vendors, quests, death) is in `knowledge/engine-server.md`; combat and
+  character numbers in `knowledge/combat-formulas.md`; spawning and monster AI in `knowledge/monsters-spawn.md`;
+  level generation and travel in `knowledge/map-generation.md`; client/server messages in
+  `knowledge/network-messages.md`; the item record in `knowledge/item-format.md`.
 - `docs/`: how to run a project. `docs/ai-workflow.md` is the method for a mod built with AI agents: a coordinator
   plus parallel lanes, model choice, game slots, the bug list, releases, safety.
 - `templates/`: fill-in files for a new project: coordinator prompt, lane rules, lane prompt, `bugs.md`, `PLAN.md`,

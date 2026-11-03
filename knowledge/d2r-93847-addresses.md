@@ -4,7 +4,7 @@
 (image base + RVA) or byte offsets. Before using any of them on another build, verify in Ghidra
 ([engine-re.md](engine-re.md)). Signatures are Windows x64; "dataFlag" is the game's data-table selector byte
 (`game + 0x106`, or `0x34a0e0(unit)`). Sources: a working D2RLoader plugin (hooked or called in game) and its
-Ghidra notes. "Hooked" = installed with the entry bytes shown and ran in game.
+Ghidra notes. "Hooked" = installed with the entry bytes shown and ran in game; "called in game" = called by a plugin in game. Rows without either mark are static reading in Ghidra.
 
 ## Image
 
@@ -59,6 +59,22 @@ Ghidra notes. "Hooked" = installed with the entry bytes shown and ran in game.
 | `0x38dfb0` | (room, x, y) -> room | room holding x/y near the given one |
 | `0x32c4a0` | (dataFlag, level) -> record | levels.txt record; +0x0e u8 Teleport (0 no, 1 yes, 2 clear line) |
 | `0x3e2b5c8` | (dataFlag, level id) -> act | level's act (address as used by the port; unusual range, verify) |
+| `0x34b240` | (unit) -> player data | first 16 bytes = character name; `+0x40 + difficulty*8` quest record, `+0x58 + difficulty*8` waypoint record, `+0xf0` client |
+| `0x48fe80` | (game, type, id) -> unit | find a unit by type and id |
+| `0x48fde0` | (player) -> client | null for a non-player |
+| `0x484de0` | (unit or room) -> game | |
+| `0x34b9d0` | (unit) -> type | 0 player, 1 monster, 4 item |
+| `0x34a500` | (item) -> item data | `+0` quality (7 unique), `+0x34` unique row |
+| `0x4249f0` | (unit) -> nonzero busy | blocks skill use (item on the cursor, trade) |
+| `0x596720` | (unit, other) -> distance | (max + min/2) of the coordinate differences minus both radii; used by pet leash tests |
+
+Game offsets beyond the table above (build 93847, static reading): `game+0x128` u16 copied into created items,
+`game+0x138` first client (next `client+0x628`, `client+4 == 4` = in the game), `game+0x140` client count (0 starts
+the idle timer), `game+0x170` u32 server frame (25 per second), `game+0x190` per-act level data, `game+0x21d8`
+game-wide quest list, `game+0x2230` player hash (128 buckets, next at unit `+0x158`). Server unit hash tables:
+`game + 0x446*8 + (id & 0x7f)*8` players, monsters from `0x4c6`, missiles from `0x646`. Client unit table
+`0x2a23910 + type*0x400` (128 buckets, chain at unit `+0x158`), lookup `0x9a5d0(id, type)`; local player
+`0x8b2d0()` -> id, `0x9a480(id)` -> client unit or null.
 
 ## Stats and stat lists
 
@@ -409,6 +425,179 @@ pairs and `scha`/`pelt`. The plugin template's `item_type_check.cpp` checks them
 | `0xf75c60` | model asset cache init: reads `data/hd/model_lod_desc.bin`; a missing file asserts "Binary desc cache is missing! ALL model loads will be blocking!" |
 | `0xf75fe0` | LOD resolver (cache, name, lodHint, out): FNV-1a 32 of the lower-cased path; unlisted: "Failed to find LOD for model %s" and the plain name is used (never drawn) |
 | `0xf75af0` | lower-bound lookup in the 44-byte entry array |
+
+## Server game loop and lifetime
+
+Static reading unless marked; matches the classic 1.13c functions in structure.
+
+| RVA | Signature | Meaning |
+|---|---|---|
+| `0x406400` | (tickMs) | process all games: loops the 1,024 game slots (`0x2a9c020`, u64 ids) |
+| `0x4062f0` | (id) -> game | game by id (id hash map `0x2a9c010`) |
+| `0x406550` | (game) | **per-game server frame**, 25 Hz: increments `game+0x170`, runs subsystems (one every 20 frames, one every 12, the per-player pass every 11). Detour and call the original for a plugin tick. Entry `48 89 74 24 20 55 57 41 57 48 8d 6c 24 b9 48 81` (hooked in game) |
+| `0x406e40` | (tickMs) | idle sweep: destroys a game 300 s after the last client left (`game+0x140 == 0`) |
+| `0x4057c0` | (u64 id) | game destroy; its prologue has a rip-relative load, so it can't be inline-hooked |
+| `0x486be0` | (game) | per-game client teardown, a clean prologue; a usable game-end hook for clearing per-game plugin state. Entry `40 56 48 83 ec 20 48 8b b1 38 01 00 00` (hooked in game) |
+| `0x4049d0` | (14 args: name, password, ..., difficulty, flags) | game create; no direct callers (likely). A frame hook that sees a new game pointer is an easier create hook |
+| `0x408ea0` | (game) | per-client join / leave states |
+| `0x1d2a790` | table | server client-packet handlers, `0x1d2a790 + id*8` (walk 1, run 3, `0x38` = `0x4b0470`) |
+
+## Quests (server)
+
+| RVA / offset | Meaning |
+|---|---|
+| `0x239c5c0` | quest descriptor table, 36 x 0x20: `+0` init function, `+8` act 0-4, `+0x14` ordinal in the act, `+0x18` quest id. Ids: act 1 1-6 and 41, act 2 8-14 + 30, 31, act 3 16-22 + 32, act 4 24-27 + 33, act 5 35-40. Source files `a1qN`, `a2q(N-8)`, `a3q(N-16)`, `a4q(N-24)`, `a5q(N-34)` |
+| quest object | game-wide list `game+0x21d8`, next at `+0x310`; `+0x10` act (events only reach quests of the NPC level's act), `+0x11` state, `+0x12` active, private data inline from `+0x20` (classic kept it in a separate block), **event callbacks at `+0x270 + 8*event`** |
+| event struct | `+0` game, `+8` event number, `+0x10` primary unit (victim / NPC), `+0x18` player, `+0x28` u16 NPC class, `+0x30` u16 dialog message. Events: 0 NPC activate, 8 monster killed, 11 NPC dialog message (others 2-5, 9, 10, object events) |
+| `0x518ec0` | (event*, allQuests) generic sender over the unit's quest list. **Hook the wrappers below rather than single quest handlers**: one hook covers every quest |
+| `0x515640` | (game, victim, killer) kill wrapper, called once per death from the death function; resolves a minion killer to its owner |
+| `0x515980` / `0x516940` | NPC activate wrapper / NPC message wrapper (game, player, npc id, msg) |
+| `0x325c50` / `0x325c00` / `0x325990` | quest bit test / set / clear (record, quest id, bit): bit `quest*16 + bit` of the record. Clear is "likely" |
+| `0x518220` | (game, quest id) -> quest object |
+| `0x490de0` | (game, 0, arg, callback(game, player, arg)) walk the game's players until the callback returns 1 |
+| `0x517530` | (game, player, code, ilvl 0 = player's, ...) create an item by 4-char code in the inventory and send it (likely) |
+| `0x441980` | (game, player, code) -> item or null: find an item by code in the inventory |
+| `0x516a50` | (game, player, srcLevel, dstLevel) -> nonzero refuses: quest lock of a warp; only tested for levels 73, 100, 132, and 118 / 128 coming from 120 |
+| `0x550c20` | Rite of Passage experience (1.4M / 20M / 40M by difficulty) |
+| `0x3c1ad0` | (merc, notClassic, hireling id) -> revive price: `(level^2 / 2) x 15`, capped by hireling columns; called at the merc's death and again when paid (hooked in game) |
+
+## NPCs and services
+
+| RVA | Meaning |
+|---|---|
+| `0x237ea60` | static NPC table, 43 x 0x1c (writable `.data`); getter `0x3971a0(dataFlag, npcClass)`. `+0` s16 class, `+5` respec allowed, `+7` hire, `+8` trade, `+9` gamble, `+0x0a` act, `+0x0b` service, `+0x0c` travel destination, `+0x10` quest gate = quest id + 1 (0 none), `+0x11` minimum level to hire. **Client menu and server checks both read it**, so one guarded write changes both |
+| `0x4b0470` | (game, player, packet, size) packet `0x38 {u32 kind, u32 npc unit id}`: kind 1 trade, 2 gamble, 3 hire; other kinds are logged and dropped (so a plugin can claim kinds >= 0x10 in a pre-hook). Hooked in game |
+| `0x4b2530` | packet `0x39` respec: NPC byte `+5`, quest gate; respec itself `0x580f20(game, player, 0)` |
+| `0x4a9880` | packet `0x37` NPC travel: gated by quest `gate - 1` bit 0, travels with `0x4f2e40(game, player, level, 0)` |
+| `0x4ae280` -> `0x4fc230` | packet `0x2e` service confirmation (Imbue / socket / personalize rewards) |
+| `0x544f60` | (game, player, merc or null, level) mercenary stats from the hireling.txt row; run on hire, save load and level-up (hooked in game). Hire `0x53d350`, bind `0x544ac0`, hireling row `0x3965d0(dataFlag, dataFlag != 1, id, level)` (0x150 bytes) |
+| `0x541880` | (game, player, npc) gamble offer generator: offers 0 and 1 are always a ring and an amulet, the rest random; loop bound 14 (`cmp ebp, 0xe` at `0x541a7c`); stops when the gamble grid is full (`0x541d20`) |
+| `0x541ab0` | gamble offer quality: roll 0..99999 against difficultylevels gamble columns (unique, then set, then rare, else magic) |
+| client menu table | pointer `0x2a48830`, count `0x2a48838`, 48 records x 0x48 (heap, filled at static init): `+0` u16 class, `+4` line count incl. Cancel, `+8` u16[8] string ids, `+0x18` 5 click handlers. **At most 5 lines per NPC**. Builder `0x1147a0(dataFlag)` (hooked in game; the Identify line rewrites the count each call), client packet sender `0xec730(id, a, b)` (9 bytes) |
+| `0x1e9200` / `0x1e9030` / `0x110670` | client list widget create / add line (takes text, not a string id) / close: the stock Yes / No page |
+| `0x2411e0` | client vendor panel set-up; panel `+0x168` 0 trade, 1 repair, 2 gamble |
+
+## Travel: warps, waypoints, portals, towns
+
+| RVA | Meaning |
+|---|---|
+| `0x4adbb0` -> `0x491ff0` | warp tile use (packet handler -> warp action `(game, player, tile)`; also called by stairs / ladder / trapdoor objects). **Best place to refuse an area entry**: detour `0x491ff0` and return without calling the original; the player stays, nothing is sent, the client doesn't hang. Entry `48 8b c4 53 55 57 41 56 48 83 ec 68 49 8b d8 4c` |
+| `0x2efee0` | (dataFlag, room, tile class, &out) linked tile in the destination room |
+| `0x362f90` | (room, &xy, size, mask 0x1c09, 1) free stand position |
+| `0x488180` | (game, player, level, ...) level move, including act changes |
+| `0x4f2e40` | (game, player, level, 0) travel used by NPC travel |
+| `0x58f680` | portal object operate (town / red portals do **not** use `0x491ff0`); pairs with its twin `0x490070`, moves with `0x491ca0`, unit message 0x14 on failure (hooked in game) |
+| `0x23a51c0` | object operate table (objects.txt `OperateFn`): 15 portal, 23 waypoint (`0x58fe00`), 31 altar, 49 Hellforge, 70 Worldstone / throne, 73 Tyrael's portal |
+| `0x34e5f0` | (unit, mode) set object mode |
+| `0x327850` | (level) town test: **hard-coded 1, 40, 75, 103, 109**, no table column; room wrapper `0x2f0750`, level thunk `0x2f0780`. Used by pathing (`0x340e70`), room monster population (`0x510f00`), AI, targeting, skills, missiles |
+| `0x3d6670` | (version, level, u16* wp) level -> waypoint number (levels record `+0xec`, 0xff none) |
+| `0x3d6930` / `0x3d6890` | waypoint test / set on a record (bit table `0x2389010`, 112 entries, count `0x23891d0`) |
+| `0x4812c0` | (client, record) packet 0x63: sends the waypoint record (opens the client's waypoint UI); `0x481030` packet 0x64 |
+| `0x4b6f10` | packet 0x4b use-waypoint handler -> `0x5933f0(game, player, level)` arrival |
+| `0x59347b` | call to the town predicate inside the arrival: towns, levels 46 / 74 and 133-137 pick entry kind 13 (the preset waypoint object, `0x3dad90`), every other level kind 0 (`0x3dac20`'s entry list, i.e. a portal / entrance spot). A new non-maze level with a preset waypoint arrives at the wrong spot unless this call is redirected (hooked in game) |
+| `0x1ecbc0` | client waypoint panel: loads actinfo rows into 0x34-byte entries (vector `0x2a96a28`, size `+8`, cap `+0x10`), 9 levels per row |
+| `0x1ea9b0` | fills one tab's **9-entry button table `0x2a969e0`** (count `0x2a969d4`). Entry `40 55 53 56 41 55 41 56 48 8d 6c 24 c9` (hooked in game) |
+| `0x1ea198`, `0x1ec05a`, `0x1ec582` | the three readers of `0x2a969e0`, each a 7-byte `lea reg, [rip+disp32]` in the builder `0x1e9b40`, click handler `0x1ebf50` and refresh `0x1ec430`. More than 9 waypoints on a tab: hook the fill, build a longer table within +-2 GB of the image, repoint the three disp32 and set the count |
+
+## Monster spawn and AI
+
+| RVA | Meaning |
+|---|---|
+| `0x493cc0` | spawn core (SpawnInfo*): `+0` game, `+8` room, `+0x10` owner, `+0x18` monstats class, `+0x24/+0x28` x/y, `+0x30` u16 flags. Some callers get a non-pointer back (1 seen): test before use |
+| `0x4929e0` | (game, room, x, y, class, 1, -1, 0, flags) spawn at a position, then `0x4a5800` adds it and sends it. Entry `4c 8b dc 49 89 5b 08 57 48 83 ec 70 8b 84 24 a0` |
+| `0x4934d0` | (game, nearUnit, class, 1, a5, count, flags) spawn N around a unit |
+| `0x349020` | (unit, overlay row, 0) set a unit overlay (stat 0xb2; the client plays it at the next unit refresh) |
+| `0x4a36c0` | (unit, mode) AI entry getter: mode 0 = monstats `+0x52` AI id, **bounds 155, else entry 0 (a bare return: the monster stands still)**; modes 1-17 the command table |
+| `0x2396e90` / `0x23981f0` | AI table 155 x 0x20 (`+0` kind, `+8` init, `+0x10` think, `+0x18` alt) / mode table 18 x 0x20; contiguous, can't grow in place |
+| `0x4a2a00` / `0x4a2690` | think dispatcher per tick / AI set-state |
+| `0x4a6d10`, `0x4a7bc0`, `0x4a7df0`, `0x4a78e0`, `0x595f80` | AI helpers: wait (frames), use skill (mode, skill, target, x, y), flee, set mode action, nearest target (`0x7fffffff` = none) |
+| monstats record | `+0x52` AI id, aip1-8 at `0x90 + 6*(n-1) + 2*difficulty`, Skill1-5 at `0x1c4`.., Sk1mode-5 at `0x1d4`.. |
+| monster data | `unit+0x10` u16 `+0x1a`: 2 super unique, 4 champion, 8 unique |
+| `0x543e90` | (game, monster, record*) players-count scaling record: `+0x24` life %, `+0x28` experience %, `+0x34` players |
+
+## Treasure classes and item creation
+
+| RVA | Meaning |
+|---|---|
+| `0x4404f0` | **treasure-class executor** (game, monster, killer, tc record, quality, a6, force, out[], outCount, max): classic algorithm (NoDrop power, picks, up to 6 results). Entry `4c 8b dc 55 53 49 8d ab 08 f7 ff ff 48 81 ec e8` |
+| `0x441300` | (game, monster, killer, u16 tcIndex, quality, ...) by index: picks the level step with `0x397290(dataFlag, tcIndex, level)`; on Normal it skips the monster-level step (classic rule) |
+| TC record | `+0x10/+0x14` total probability classic / expansion, `+0x18` picks (negative = all), `+0x38` entries (stride 0x20: prob classic, prob expansion, id, flags 1 item / 2 TC / 4 unique-set / 0x10 always / 0x40 conditional), `+0x40` count. Group array at data tables `+0xd78`, stride 0x150 |
+| `0x43cd50` | (game, ItemGen*, applyExplicit) create item; ItemGen 0xc8: `+0` owner, `+0x10` game, `+0x18` ilvl, `+0x20` base class, `+0x24` mode (3 ground, 4 inventory), `+0x3c` explicit flag, `+0x58/+0x5c` seeds |
+| `0x43d530` | (owner, class, game, mode, quality, a, b, ilvl, explicit, seed, initSeed) struct builder + create. **No function that creates a unique by row was found**; a one-entry treasure class is the likely data route (untested) |
+| `0x43fbf0` | gold / fallback drop at a monster's position (not the TC path) |
+| `0x543b50` | monster level set-up: area level only above Normal (Normal uses monstats level) |
+
+## Inventory moves and carry rules
+
+| RVA | Meaning |
+|---|---|
+| `0x471e90` | (player, oldLocs, newLocs, ids, count, flag) -> bool: the funnel of the container packets (0x18, 0x19, stash / cube / belt moves; 40 callers). Loc = `{mode, page, x \| y << 16, bodyloc}`. False = refused, item stays. Hooked in game |
+| `0x471950` | (player, itemId, toInventory, distance, ...) ground pickup (packet 0x16 and others). Hooked in game |
+| `0x471500` | (player, loc*, ids*, count, 0) place: grid check `0x472d20`, class / carry check `0x4734f0` |
+| `0x473960` | carry1 check: compares the uniqueitems `carry1` **number** (record `+0x30`, an int) of carried uniques, not the unique row. Two different uniques with the same carry1 value block each other |
+| `0x382df0` | (loc[4]) body location 1-12 helper |
+
+## Player death and respawn
+
+| RVA | Meaning |
+|---|---|
+| `0x42c110` | (game, player, x, y, room) corpse creator: moves equipped items onto the corpse, drops gold |
+| `0x424ac0` | (game, victim, killer) death penalty: gold penalty `0x425cb0`, then (level > 1, killer a monster or foreign player) experience loss `(exp[L] - exp[L-1]) * pct / 100`, never below `exp[L-1]`. Entry has a rip-relative call at +0x11 |
+| `0x4b6160` | packet 0x41 respawn: needs mode 0x11; restores life / mana / stamina, moves to the act town, clears state 0x36. Hardcore branch refuses |
+| `0x485350` | level entry: re-creates the player's stored corpses in the room (each entry and respawn) |
+| `0x42b220` | corpse pickup (interact handler `0x4b2be0`); removal sequence `0x389730`, `0x2ef4d0`, `0x476fc0` (packet 0x8e), `0x48faa0` |
+
+## Player actions and skills (server)
+
+| RVA | Meaning |
+|---|---|
+| `0x42d2c0` | (game, unit, Skill* or 0, mode 2 walk / 3 run, x, y, 0, 0) move; 0 = ok |
+| `0x4fdb40` / `0x4f8de0` | cast the active left skill at x, y / at a unit (walks into range first) |
+| `0x33dcd0` | (player, id, -1) -> Skill*: `+0` row, `+8` next, `+0x10` skill mode, `+0x40` base level. List head `0x34b6e0(unit)` |
+| `0x34a540` / `0x34b400` | active left / right skill; packet 0x3c selects (handler `0x4b4250`, byte 4 = 0x80 for left) |
+| `0x438670` | (version, player, id) add a skill level, spends one stat 5 point, no prerequisite check |
+| `0x439500` | (game, unit, delay, skill) **server cooldown start**: state 0xb9 + stat 359 at layer = skill, value = end frame; the usable test treats stat 359 > 0 as not ready. Hooked in game |
+| `0x217b90` | (unit, delay, skill) client cooldown start, ms = delay x 40. Hooked in game |
+| `0x3b5160` | (dataFlag, unit, calc, skill, level) evaluate a skill formula; skill record `+0x234` globaldelay, `+0x238` localdelay |
+| `0x235f590` | client start table (`cltstfunc`), 55 slots (bound `0x235f7c0`), read by `0x218030` at skill record `+0x148`. Slot 18 draws `cltmissilec` (record `+0x144`) and asserts on a row without one |
+| `0x569670` | the recipe D2R's own timed starts use: stat list `0x2f7300`, state `0x2f72f0`, expiry `0x2f7a50`, attach `0x2f2cb0`, state bit `0x3354c0`, timed event `0x48b720` |
+| `0x2391370` / `0x23589d0` | **missile collide tables** server / client: 16-byte rows {check function, u32 mask}, types **0-8 only**, followed by other data. Server tick `0x463100` |
+| `0x449f40` | (game, unit) slow / damage floor: monsters read monstats byte `+0x1ba + difficulty`, players a fixed -50 |
+| `0x33f6a0` | second skill restrict test (modes 0-2 only), used by the event-skill caster `0x589930` (procs, charges, oskills). The main usable test `0x33f360` also knows only `restrict` 0-2 and lets other values through; the skills record holds the mode at `+0x2d0`, State1-3 as i16 at `+0x2d2` |
+| `0x5896e0` | (caster, skill, level, target, flag) event cast: returns 0 when the caster has state 54 (uninterruptable). Whirlwind holds state 54 (with 174) for the whole spin, which is why chance-to-cast on striking / attack never fires while spinning |
+| `0x441b10` / `0x5590c0` / `0x439130` | durability wear after a hit (game, unit, item) / skill-use wear or stack chance / quantity use (every throw and stack skill use goes through it) |
+| `0x406e10` | Hardcore game-over timer start (game `+0x5800`), called by the dead-mode entries `0x42a5e0` / `0x42de40` for a character with player-info flag 4 (hardcore); flag 8 = dead |
+| `0x2386bd8` | properties.txt `func` count (37) checked by `0x3d4620` before the table `0x2386ab0`; D2R fills 1-25 and 36, **26-35 empty** (the slot is skipped). Shared stat adder `0x3d5940` (dataFlag, type, unit, item, property, set, stat, layer, value, state, flags, extra) as used by function 1 (`0x3cf960`) |
+## Server -> client chat line
+
+| RVA | Meaning |
+|---|---|
+| `0x477a30` | (client, record) writes **packet 0x26** (chat) to one client; record 0x147 bytes: `+1` type, `+2` language, `+3/+4` speaker type / id, `+8` colour, `+9` name flag, `+0x0a` name (<= 60), `+0x47` text (<= 255). Called in game |
+| client side | handler `0x12c190`, client packet table `0x22bbc40` (24-byte entries `{handler, size, 0}`) |
+
+Observed: chat type 1 or 4 = a line in the bottom-left log coloured by the colour byte (0 white, 1 red, 2 green, 3
+blue, 4 tan, 8 orange, 9 yellow), 5 = overhead bubble, 0, 2, 3, 6-9 show nothing; inline colour codes are not
+interpreted. **A visible chat line that arrives while an NPC's quest speech scrolls stops the speech for good and the NPC
+menu never opens** (type 0 doesn't). Hold such notices until the menu is up (client flag `0x2a486a4` = 1).
+
+## Client UI functions
+
+| RVA | Meaning |
+|---|---|
+| `0x14c4520` | skill tree build: walks pages 3, 2, 1 and gives page p the widget `Tab<n>` counting up from 0, so **Tab0 = SkillPage 3, Tab2 = SkillPage 1**. Tab setter `0x14c3b10` clamps 0..3 (current tab `0x3bbd8bc`); tab 3 is the controller's item-skills tab (seven `== 3` compares); controller wrap `0x14c6810`, styling loop `0x14c789b` |
+| `0x14eaf40` / `0x14eb1b0` / `0x14eb250` | Advanced Stats panel: rebuild (record copies at panel `+0x190`), row value (itemstatcost `advdisplay` 2 rows listed only when not 0), row text; unit at panel `+0x168` |
+| `0x2d6520` | (viewer, itemstatcost record, value, layer, flag, char out[256], mode) -> al: one property line (the descfunc switch). Hooked in game; caller `0x2d97e0` applies ValShift |
+| `0x2dc4b0` | builds every tooltip line of one item (the hovered item is rebuilt every frame) |
+| `0x2c1640` | durability line of the item description |
+| `0x28bcf0` | (dataFlag, skill id, 0) -> u16 skill name string id; a class value instead of the dataFlag crashes |
+| `0x3e2b730` | (id) -> text of a string id (a `jmp [rip]` thunk: call it, don't hook it) |
+| `0xd42b0` | debug "reveal automap": breadth-first over the rooms joined to the player's room (visitor `0xd2240`), then flips the debug flag byte `0x2a2add4` (write it back). Automap layer list `0x2a2cf60` (next `+0xa8`), current `0x2a2cf68`. Called in game |
+| `0x2cd720` | cube panel Transmute button: sends packet 0x20 (server `0x4c1590` -> `0x4f2490`) |
+| `0xcea50`, `0x908690` | hover name builder; colour index -> rgba (0 white, 3 champion, 4 unique, 1 corpse) |
+| `0xd78f0`, `0xd76e0`, `0xd6b20` | automap unit classifier / unit drawing / name drawing |
+| `0xe1c60` | Settings.json "Quick Cast" option (read once at start) |
+| `0x147450` | loads `data/hd/global/excel/controllerskillsettings.json` (per skill `id`: usageType, targetGroup, toggleSlotState, tapWindowMS, ...); `0x14a970` "switch only" skills = `toggleSlotState` set (vanilla: the Paladin auras) |
+| `0x14b920` | quick-cast queue: drops the cast unless the usable test returns 0, 1, 2, 6, 8 or 9 |
 
 ## Engine-side crashes not caused by mods
 

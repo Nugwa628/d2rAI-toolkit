@@ -5,7 +5,8 @@ description: Create or change Diablo II Resurrected items in a modkit mod - base
 
 # Items, affixes and loot
 
-Read knowledge/tables.md (item tables section) and knowledge/engine-limits.md first in a session. Always start
+Read knowledge/tables.md (item tables section) and knowledge/engine-limits.md first in a session. Drop, quality
+and vendor rules are in knowledge/engine-server.md; the item record and its save widths in knowledge/item-format.md. Always start
 from a vanilla row: `python -m modkit show weapons "Crystal Sword"`, `show uniqueitems "The Gnasher"`.
 
 ## Base items (weapons.txt, armor.txt, misc.txt)

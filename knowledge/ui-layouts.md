@@ -101,6 +101,35 @@ Skill tree tabs are separate `TabWidget`s. More than D2R's 3 work: 8 TabWidgets 
 `textTab0-2`, and the stock per-tab `Background` frames assume 3 tabs (move them off screen). Keep the stock
 `TextTab0-2` widgets (off screen) in case the code looks them up.
 
+The panel code itself (build 93847, `0x14c4520`) only builds **SkillPage 1-3**, and in reverse: `Tab0` holds
+SkillPage 3, `Tab1` page 2, `Tab2` page 1; each skill becomes `SkillButton<page> <col>,<row>` under that tab's
+`SkillButtonContainer`. The tab setter (`SkillsTreePanelMessage:ActivateTab:<n>`) clamps to 0..3, and 3 is the
+controller's item-skills tab. Extra tab widgets therefore show nothing unless a plugin widens the page loop and
+the clamp ([engine-limits.md](engine-limits.md)).
+
+## Waypoint panel
+
+`waypointspanelhd.json` (`WaypointsPanel`): one tab per actinfo.txt row, **9 level slots per tab**. The buttons are
+made at run time from the layout's `UnselectableButtonTemplate` as `Act<tab>_Button<i>`, one per entry of the
+current tab's button table, at y = index x the layout's `buttonOffset` (default 123) + 264. The waypoint record
+itself holds 112 numbers per difficulty (levels.txt `Waypoint`).
+More than 9 waypoints in one act needs a plugin (build 93847): hook the tab fill `0x1ea9b0`, build a longer
+`{level, other}` table in memory within +-2 GB of the image, point the three `lea reg, [rip+disp32]` readers
+(`0x1ea198`, `0x1ec05a`, `0x1ec582`) at it and set the count dword `0x2a969d4` (done in game in one port; a tab
+then shows more than 9 buttons, so give the layout room).
+
+## Panel messages and plugin panels
+
+- Layout buttons can send the stock `PanelManager` messages in `onClickMessage`:
+  `PanelManager:OpenPanel:<root name>`, `PanelManager:ClosePanel:<root name>`, `PanelManager:TogglePanel:<root name>`
+  (for example the stash root `BankExpansionLayout`). These work for plugin panels too (observed).
+- A custom message target in a layout never reaches a plugin's UI message listener (observed): drive plugin
+  panels with the `PanelManager` messages and handle state in the plugin.
+- Plugin panels (PluginSDK PanelService) can share the left panel slot with a stock panel and close with Esc;
+  open them only from the UI thread.
+- The SDK's overlay drawing has lines, rectangles and text, no sprites: an icon bar drawn by a plugin has to be
+  rectangles (or text) unless you place widgets in a layout.
+
 ## Gold widgets
 
 Inventory: `gold_button` (drop gold, `PANEL\\GoldButton`), `gold_amount` (`$StyleGoldAmount`) with a

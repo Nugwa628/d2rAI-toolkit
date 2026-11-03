@@ -13,8 +13,14 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [hd-graphics.md](hd-graphics.md) | HD assets: `.sprite` format, item/skill/panel art, HD json maps, overlays, player state machines, monsters |
 | [ui-layouts.md](ui-layouts.md) | `data/global/ui/layouts/*hd.json`: widget tree, grids, panels, tabs, stash/inventory/cube/skill tree |
 | [strings.md](strings.md) | String JSON files, complete-file replacement, safe new IDs, printf placeholder hazard |
-| [saves.md](saves.md) | `.d2s` v105 essentials, checksum, D2RLoader `.d2rl` sidecar, safe and unsafe hand edits |
+| [saves.md](saves.md) | `.d2s` v105 layout (retail and D2RLoader extended), checksum, `.d2rl` sidecar, safe and unsafe hand edits |
+| [item-format.md](item-format.md) | The retail bit-packed item record: fields per quality, Huffman code, stat lists, save copy vs network copy |
 | [engine-re.md](engine-re.md) | Finding and hooking D2R code: memory dump, Ghidra headless, query scripts, hook rules, logs |
+| [engine-server.md](engine-server.md) | The server half: game loop, table sets and the game-edition flag, treasure classes and item creation, inventory rules, NPCs and vendors, quests, death and party |
+| [combat-formulas.md](combat-formulas.md) | Hit chance, block, the damage pipeline and resist caps, crushing blow and open wounds, experience, skills and missiles, itemstatcost ops, hirelings |
+| [monsters-spawn.md](monsters-spawn.md) | Room population, monster density and packs, superuniques, the AI table and aip parameters, corpses and resurrection |
+| [map-generation.md](map-generation.md) | Level generation: seed chain, act and level layout, the tables that drive it, tiles and rooms, room streaming, travel and act change |
+| [network-messages.md](network-messages.md) | Client/server game messages: framing and sizes, the useful ids, server hook points, the join in order, item action codes, weapon swap |
 | [d2r-93847-addresses.md](d2r-93847-addresses.md) | Address registry for build 93847: functions, tables, record and unit offsets, entry bytes |
 | [debugging.md](debugging.md) | Symptom -> cause -> fix table from real bugs, and where every log lives |
 | [crash-triage.md](crash-triage.md) | From a player's crash report to a fix: RVA from RIP, stack return addresses, Ghidra, which logs to ask for, a worked example |

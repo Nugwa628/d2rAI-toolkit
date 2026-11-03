@@ -7,7 +7,9 @@ description: Change Diablo II Resurrected engine behaviour that game data cannot
 
 Data first: check knowledge/engine-limits.md and the vanilla function catalogs (`python -m modkit functions`)
 before writing code. When code is needed, read knowledge/engine-re.md and knowledge/d2r-93847-addresses.md, and
-knowledge/d2rloader.md for what the loader does on players' machines. Porting a classic engine DLL: the `d2r-port`
+knowledge/d2rloader.md for what the loader does on players' machines. Server behaviour and its hook points are in
+knowledge/engine-server.md, combat-formulas.md, monsters-spawn.md and map-generation.md; message ids, the join order
+and where the server dispatches client messages are in knowledge/network-messages.md. Porting a classic engine DLL: the `d2r-port`
 skill first. A whole new game system (a mapping system, a new crafting bench, a new panel): plan it with
 knowledge/new-game-systems.md first (player steps, data vs plugin split, an RE spike for every hook, where state
 lives), then build it part by part with this skill.
