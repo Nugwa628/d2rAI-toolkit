@@ -66,3 +66,28 @@ From the PluginSDK's `LOCALIZATION.md`:
 
 Namespaces avoid ID management and the complete-file rule; native loading keeps plain keys in tables (simplest
 when converting existing data).
+
+### Namespaces in practice (observed with D2RLoader 1.3.1, D2R 3.3 build 93847)
+
+- **A namespaced string has no stable numeric ID.** Only keys that a table cell references get a two-byte number,
+  handed out when the tables load from the lowest numbers D2R's strings leave free, in load order. The same data
+  gives the same numbers each launch, but any change to which keys the tables reference moves them. Never store or
+  hard-code such a number; a plugin asks for text by full key (`namespace:Key`) through the PluginSDK localization
+  service at the moment of use (it follows language changes). The service's by-ID lookup answers only D2R's own
+  IDs; D2R's own numeric lookup (`0x3e2b730`, build 93847) does resolve the temporary numbers.
+- Keys that no table references take no number at all, so the 65,535 pool is rarely the constraint (D2R uses about
+  12,100 distinct IDs). A missing key in a table cell, or a full pool, **stops startup** with a loader error naming
+  the key; it never wraps.
+- Accepted in every localization column tried: item `namestr`, monstats `NameStr` / `DescStr`, skilldesc
+  `str name/short/long/alt`, itemstatcost `descstrpos/descstrneg/descstr2/dgrpstrpos`, levels `LevelName` /
+  `LevelWarp` / `LevelEntry`, uniqueitems / setitems `index`, sets / runes / superuniques / lowqualityitems names,
+  magic and rare affix names, misc `spelldescstr`.
+- **No English fallback**: a record without the game's language shows a "missing string" placeholder. Fill all 13.
+- With the namespace on, complete copies of D2R's files still override D2R's keys, but records in them whose key D2R
+  doesn't have are filed under the mod's namespace and their `id` is ignored (their old numeric IDs stop working).
+- Fixed-size name fields (dataguide `dataLength`, e.g. 31 for uniqueitems / setitems `index`, 39 for levels
+  `LevelWarp`) must hold the whole `namespace:Key`. A longer key gave no loader error in one test, so it is either
+  stored elsewhere or cut silently: unsettled, keep keys short (an alias key is the safe route).
+- Namespaced files in `strings/` also resolve in legacy graphics mode.
+- UI functions that take text (for example the NPC menu line adder) can be fed the looked-up text directly; ones
+  that take a string ID need a native ID.

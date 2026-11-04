@@ -90,7 +90,25 @@ validator from these files: it types every cell, checks references, key lengths 
 | experience | `Warlock` column | |
 
 Classic renames to remember: `Hralti*` -> `Hratli*`, `Drehya*` -> `Anya*`, `NoShldBlock` -> `ShieldBlockOverride`,
-skills `delay` -> `localdelay`, uniqueitems `enabled` -> `spawnable`, missiles `LevRange` merged into `Range`.
+skills `delay` -> `localdelay`, uniqueitems `enabled` -> `spawnable`, missiles `LevRange` merged into `Range`. Row names D2R
+changed: `nehlithak*` -> `nihlathak*`, Sword Mastery -> Blade Mastery, `cr_lancer8` -> `cr_lancer9`. Classic tables with no D2R
+equivalent (nothing reads them): arena, chartemplate, hiredesc, monitempercent, uniquetitle, weaponclass.
+
+Semantics worth knowing (build 93847, read from the code):
+
+- uniqueitems `carry1` is an **int**, and two carried uniques block each other when their carry1 values are equal
+  (not when they are the same unique). Use a distinct value per carry1 unique.
+- difficultylevels gamble columns: the gamble quality roll is 0..99999, unique below the unique column, set below
+  unique + set, rare below the sum of the three, else magic.
+- `data/hd/global/excel/controllerskillsettings.json` is a per-skill JSON table (keyed by skill `id`) for the
+  controller and keyboard Quick Cast: `usageType`, `targetGroup`, `usePredictiveTargeting`, `ignoreTargetOnHold`,
+  `toggleSlotState` (switch the slot instead of casting; vanilla sets it on the Paladin auras), `tapWindowMS`,
+  `skillQueueDeadzoneMS`. Skills missing from it keep zeros.
+- monstats `AI` must be a monai row 0-154: the engine's AI table has 155 entries and anything above runs the
+  empty entry 0 ([engine-limits.md](engine-limits.md)).
+- objects `OperateFn` 23 is the waypoint; its 16 vanilla rows are 119 145 156 157 237 238 288 323 324 398 402 429
+  494 496 511 539.
+- levels.txt has **no town column**: the five vanilla towns are hard-coded.
 
 ## Per-table cheat sheet for overhaul work
 

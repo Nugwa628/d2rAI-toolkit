@@ -33,6 +33,9 @@ Each entry: the rule, what happens when a mod breaks it, and the fix. "Plugin" m
 | **Mode codes**: plrmode/monmode `Token` for Sequence and Knockback is `GH` (same as Get Hit), but the `Code` column the engine resolves is **SQ** (sequence) and **KB** (knockback). Skills reference the Code | `anim GH` plays get-hit/knockback frames and the server never starts the skill; if plrmode/monmode `Code` is changed to GH, SQ resolves to mode -1 and the animation lookup (`0x3b6700`) crashes on first use | Always keep D2R's plrmode/monmode `Code` column; use SQ/KB in skills |
 | Skill tooltip line types (skilldesc `descline`/`dsc2line`/`dsc3line`): D2R uses its own types up to 74-79. The line renderer (`0x287a50`, D2Client UI/SkillDesc.cpp) asserts `stringIndex1 != strdummy` when a type's text A/B is missing | Assert when hovering a skill | Give every line the texts its type needs; don't invent type numbers |
 | Skill tree: 6 rows x 3 columns per tab (`skillRow`/`skillColumn` in skillstreepanelhd.json); D2R's panel fills tab titles for 3 tabs (`textTab0-2`) | Extra tabs have no title text | More than 3 tabs works in HD (8 TabWidgets with `ActivateTab:0..7` confirmed); titles must be drawn in art or a label of your own ([ui-layouts.md](ui-layouts.md)) |
+| **Skill tree code knows 3 pages** (build 93847, `0x14c4520`): it builds SkillPage 3, 2, 1 into `Tab0`, `Tab1`, `Tab2` (reverse order), clamps the tab index to 0..3 (`0x14c3b10`) and treats tab 3 as the controller's item-skills tab | Skills of SkillPage 4+ get no button; extra tabs click as tab 3/4 | Extra tab widgets lay out fine, but more than 3 skill pages need a plugin that widens the build loop, the clamp and the `== 3` tests (hooked in game in one port) |
+| Keyboard Quick Cast skips skills whose `controllerskillsettings.json` (`data/hd/global/excel/`) entry has `toggleSlotState` set (vanilla: the Paladin auras); those only switch the slot | A new aura-like skill casts on key press, or a new skill only switches | Add an entry by skill `id`; skills missing from the file keep zeros |
+| Skill cooldowns are **one timer per skill**: the server start (`0x439500`) sets state 0xb9 and stat 359 (`skill_cooldown`) at layer = skill id with the end frame; the client start (`0x217b90`) runs in ms (delay x 40) | Shared cooldown groups don't exist in vanilla | Plugin: hook the start and start every member's timer |
 | Skill icons: one HD strip per class, max 16,384 px wide; at D2R's 130 px icon (132 stride) that is **62 icons** (normal + pressed frames) | Bigger strip fails to load or icons shrink | Keep <= 62 icons per class strip or use smaller icons ([hd-graphics.md](hd-graphics.md)) |
 
 ## Calc codes and formulas
@@ -90,8 +93,12 @@ Each entry: the rule, what happens when a mod breaks it, and the fix. "Plugin" m
 | missiles `pCltHitFunc` | 0-65 (6, 7 and others unused) | `0x2358710`, bound 81 (`0x2358a64`) | 66-80, plus unused low slots (6 and 7 confirmed empty) |
 | missiles `pSrvDoFunc` | 1-45 | `0x2390e80`, **no bound check** (dispatcher `0x466ce0`) | **46-54** empty (table end not confirmed) |
 | missiles `pCltDoFunc` | 1-77 | `0x2358430` (port notes say 77 slots, but D2R's `heraldspawner` uses 77: verify the size); called from `0x1ba040` | 14 unused by any D2R missile |
-| itemstatcost `descfunc` | 5-29 in use | not located | Values outside D2R's set print nothing useful: plugin |
-| properties `func1` | 1-25, 36 | funcs at `0x2386ab0` | plugin |
+| itemstatcost `descfunc` | 1-31 (31 = Chronicle text); 32+ print no line | formatter `0x2d6520` (a switch) | plugin hook on the formatter |
+| missiles `CollideType` | 0-8 | collide tables server `0x2391370`, client `0x23589d0` (16-byte rows {check, mask}), followed by unrelated data | none: type 9+ reads garbage; a plugin must copy the tables and repoint the nine `lea` readers |
+| monai row (monstats `AI`) | 0-154 | AI table `0x2396e90`, 155 entries, getter `0x4a36c0` bounds-checks | none: row 155+ runs entry 0 (the monster stands still); a plugin hooks the getter |
+| skills `cltstfunc` | 0-55 (base) / 61 | `0x235f590`, 55-slot bound read from `0x235f7c0` | verify before use |
+| properties `func1` | 1-25, 36 | funcs at `0x2386ab0`, count 37 at `0x2386bd8` | 26-35 empty: a row using them is silently skipped; plugin writes the slot |
+| skills `restrict` | 0-2 | usable tests `0x33f360` / `0x33f6a0` | 3+ is let through (never restricts): plugin |
 | misc `pSpell` | -1..15 | `0x236fe30`, 20 entries | 16-19 |
 | cubemain `op` | 28 | switch in `0x529090` / `0x529d50` | anything not 1-28 needs a plugin |
 | skills `srvdofunc` / `cltdofunc` | 171 / 109 | 191 / 130 slots | 172-190 / 110-129 |
@@ -103,6 +110,25 @@ Each entry: the rule, what happens when a mod breaks it, and the fix. "Plugin" m
 | **D2R raises only its own events.** Rows appended to events.txt load, and properties can listen to them, but nothing raises them (a classic engine DLL raised "the unit dies" from a wrapper of the death function) | "Cast on death" and similar properties never fire | Plugin: hook the unit death function `0x44db20` and raise the event through `0x44d570` on the victim ([porting-classic-mods.md](porting-classic-mods.md) section 6) |
 | Missile server hit function **6** spawns the monstats row in **`sHitPar1`** (`0x45ce90` -> spawn `0x50a050`) | After a monstats renumbering, every hit spawns the wrong monster | Remap `sHitPar1` of hit-6 rows through the monstats id map; validate it |
 
+## Hard-coded server rules (D2R 3.3 build 93847, static reading unless marked)
+
+| Rule | Symptom when broken | Fix |
+|---|---|---|
+| **Towns are a fixed list**: levels 1, 40, 75, 103, 109 (`0x327850`); no levels.txt column is read. Pathing, room monster population, AI, targeting, skills and missiles all ask it | A new town level gets monsters and allows hostile skills | Plugin: replace the predicate's entry (a small leaf) with your own list, keeping the five vanilla towns |
+| **Waypoint arrival spot**: towns, levels 46, 74 and 133-137 arrive at the preset waypoint object; every other level at its portal / entrance spot (call at `0x59347b`). Maze levels search for their waypoint first | A new non-maze level with a preset waypoint puts the player at the wrong spot | Plugin: redirect that one call (hooked in game in one port) |
+| **Waypoints: 112 numbers** per difficulty (bit table `0x2389010`); the panel shows **9 per tab**, one tab per actinfo row (button table `0x2a969e0`, count `0x2a969d4`) | A tenth waypoint of an act has no button | Plugin: build a longer button table and repoint its three readers ([ui-layouts.md](ui-layouts.md)) |
+| Warp quest locks are hard-coded for levels 73, 100, 132 and 118 / 128 from 120 (`0x516a50`); town and red portals do not pass through the warp action | | Refuse entries yourself in a detour of the warp action `0x491ff0` (silent, no hang) and in the portal operate function `0x58f680` |
+| NPC services come from a **static 43-entry NPC table** (`0x237ea60`: hire / trade / gamble / respec flags, hire quest gate, hire level), read by both the client menu and the server | Changing vendors in tables alone doesn't add a Trade line | Guarded plugin write into the table |
+| **NPC menus hold at most 5 lines** (client records `0x2a48830`, 5 click handlers each) | | A "more" line that opens a plugin list |
+| Server packet `0x38` (trade / gamble / hire) accepts kinds 1-3 only; other kinds are logged and dropped | | A plugin pre-hook on `0x4b0470` can serve its own kinds |
+| Gamble: offers 0 and 1 are always a ring and an amulet, then at most 14 picks, stopped early when the gamble grid is full; quality rolls 0..99999 against difficultylevels' gamble columns (`0x541ab0`) | | Raise the loop bound with a guarded byte patch (`0x541a7e`) |
+| **uniqueitems `carry1` is a number, compared between uniques** (`0x473960`, record +0x30): two different uniques with the same carry1 value block each other (observed in game) | A second, different carry1 unique can't be picked up | Give each carry1 unique its own value |
+| No engine function creates a unique by row; the unique roll happens inside item creation | | Use a treasure class whose only entry is the unique's base (untested) |
+| On Normal the monster's level is its monstats level and the treasure class level step ignores the area level; area level counts only from Nightmare up (`0x543b50`, `0x441300`) | | Data, or a byte patch at those sites |
+| Mercenary revive price `(level^2 / 2) x 15`, capped by hireling columns (`0x3c1ad0`) | | Hook it (hooked in game in one port) |
+| Death penalty: gold penalty, then (level > 1, killed by a monster or another player) `(exp[L] - exp[L-1]) * pct / 100` experience, never below `exp[L-1]` (`0x424ac0`) | | |
+| Games are destroyed 300 s after the last client leaves (`0x406e40`); the server frame runs at 25 Hz (`game+0x170`) | Per-game plugin state outlives the game | Clear it in a game-end hook (`0x486be0`) |
+| A visible chat line (packet 0x26, types 1, 4, 5) that arrives while an NPC's quest speech scrolls stops the speech and the menu never opens (observed in game) | NPC frozen after a plugin notice | Send notices once the NPC menu is open, or use type 0 for hidden data |
 ## Strings
 
 | Rule | Symptom when broken | Fix |

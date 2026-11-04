@@ -6,7 +6,8 @@ description: Create or change Diablo II Resurrected monsters, bosses, superuniqu
 # Monsters and areas
 
 Start from a vanilla monster: `python -m modkit show monstats zombie1`, `show monstats2 zombie1`,
-`show levels "Blood Moor"`. Read knowledge/tables.md (monster section) and knowledge/engine-limits.md.
+`show levels "Blood Moor"`. Read knowledge/tables.md (monster section) and knowledge/engine-limits.md. Spawning, packs and AI parameters:
+knowledge/monsters-spawn.md; level generation and travel: knowledge/map-generation.md.
 
 ## A new monster = rows in three tables
 1. **monstats.txt** (`clone_row` from a monster with the right behaviour): `Id` (key), `NameStr` (string key),

@@ -328,8 +328,14 @@ in an area. It's also good reading for human modders.
 | [hd-graphics.md](knowledge/hd-graphics.md) | `.sprite` files, item/skill/panel art, HD json maps, overlays, player and monster animation |
 | [ui-layouts.md](knowledge/ui-layouts.md) | The HD layout json: widget tree, grids, panels, tabs, stash, inventory, cube, skill tree |
 | [strings.md](knowledge/strings.md) | String files, whole-file replacement, safe new ids, the printf placeholder trap |
-| [saves.md](knowledge/saves.md) | `.d2s` essentials, checksum, D2RLoader's extended saves, safe and unsafe edits |
+| [saves.md](knowledge/saves.md) | `.d2s` layout, checksum, retail and D2RLoader extended saves, safe and unsafe edits |
+| [item-format.md](knowledge/item-format.md) | The bit-packed item record in saves and item messages |
 | [engine-re.md](knowledge/engine-re.md) | Finding and hooking D2R code: memory dump, headless Ghidra, query scripts, hook rules |
+| [engine-server.md](knowledge/engine-server.md) | The server's game logic: tick, table sets and game edition, drops, inventory, vendors, quests, death |
+| [combat-formulas.md](knowledge/combat-formulas.md) | Hit, block, damage and resist rules, experience, skills, hirelings |
+| [monsters-spawn.md](knowledge/monsters-spawn.md) | Monster spawning, packs, superuniques and the AI table |
+| [map-generation.md](knowledge/map-generation.md) | How levels are generated, streamed and travelled |
+| [network-messages.md](knowledge/network-messages.md) | Game messages a plugin author sees when debugging: ids, join order, item actions, weapon swap |
 | [d2r-93847-addresses.md](knowledge/d2r-93847-addresses.md) | Address registry for build 93847: functions, tables, record and unit offsets |
 | [debugging.md](knowledge/debugging.md) | Symptom → cause → fix, from real bugs, and where every log lives |
 | [crash-triage.md](knowledge/crash-triage.md) | From a player's crash report to a function and a fix, with a worked example |

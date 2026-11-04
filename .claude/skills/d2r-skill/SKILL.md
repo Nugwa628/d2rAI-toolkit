@@ -6,7 +6,8 @@ description: Create a new Diablo II Resurrected skill, or rework an existing one
 # Make a D2R skill
 
 You turn a skill idea into a `skill` op in a modkit project, build it, check it, and hand the user a test list.
-Read `knowledge/engine-limits.md` once per session if you haven't; it lists what D2R hard-codes.
+Read `knowledge/engine-limits.md` once per session if you haven't; it lists what D2R hard-codes. Damage, resist,
+mana cost and missile rules: `knowledge/combat-formulas.md`.
 
 ## 1. Pin the design down
 Ask only what changes the build: class (or item/monster-only), which existing skill it replaces (if a class skill:

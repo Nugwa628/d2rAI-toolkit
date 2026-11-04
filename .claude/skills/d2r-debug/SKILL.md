@@ -9,7 +9,8 @@ The user tests; you diagnose from files. Don't ask them to describe a crash: rea
 
 A crash report with an address (`D2R.exe+0x...`, a last-resort report): use the `d2r-crash` skill and
 knowledge/crash-triage.md. Loader-side surprises (another `default_mod`, the cache-building first start, other
-plugins, stored key bindings): knowledge/d2rloader.md.
+plugins, stored key bindings): knowledge/d2rloader.md. A plugin change that breaks multiplayer, item moves or the
+weapon swap: knowledge/network-messages.md (refused requests get no reply; an oversized item record is sent empty).
 
 ## Where to look (newest first)
 - `<game>/d2rloader/logs/d2rloader.log`: load steps and **asserts after "startup complete"** (data errors name
