@@ -9,7 +9,8 @@ almost line for line; the differences that matter to a mod are called out.
 
 Related: limits in [engine-limits.md](engine-limits.md) ("Events and spawns"), the unit layout and the generic spawn
 function `0x492cf0` in [d2r-93847-addresses.md](d2r-93847-addresses.md), table columns in [tables.md](tables.md),
-drops on death in [engine-server.md](engine-server.md).
+drops on death in [engine-server.md](engine-server.md). The full AI framework, every common AI's behaviour, the
+mods' start handlers, the new-monster message and player corpses are in [monster-ai.md](monster-ai.md).
 
 ## 1. Structures worth knowing (build 93847)
 
@@ -31,8 +32,9 @@ drops on death in [engine-server.md](engine-server.md).
 | monster region | +0x14 | up to 13 monster entries (class, rarity, component variants) |
 | monster region | +0x2b8, +0x2bc, +0x2bd, +0x2c0, +0x2c8 | MonDen, MonUMin, MonUMax, area level, uniques spawned so far |
 | monster region | +0x2e8 | D2R-only Terror Zone block (`+0x2e8` = level is desecrated) |
-| monster data (unit +0x10) | +0x1a | u16 type flags: 1 boss, 4 champion, 8 counted as a unique of its level, 0x10 minion, 0x20 possessed, 0x40 ghostly |
+| monster data (unit +0x10) | +0x1a | u16 type flags: 1 boss, 2 superunique, 4 champion, 8 counted as a unique of its level, 0x10 minion, 0x20 possessed, 0x40 ghostly, 0x80 multishot (more in [monster-ai.md](monster-ai.md)) |
 | monster data | +0x20 | up to nine monumod ids, zero-terminated |
+| monster data | +0x2a | u16 superuniques row (-1 none) |
 | monster data | +0x30 | pointer to the AI control block (section 6) |
 | monster data | +0x68 | last AI mode ("was hit" reads it) |
 
@@ -40,7 +42,9 @@ drops on death in [engine-server.md](engine-server.md).
 
 - Rooms become active by player proximity: the room a client stands in and its near rooms are created. Joining a game
   creates the act start room first, then its near list.
-- `CreateRoom` (`0x326480`) steps the DRLG room seed once and makes the active room with seed `{that value, 666}`. Its
+- `CreateRoom` (`0x326480`) steps the DRLG room seed once **in place** (rooms built later re-pick their shared border
+  tiles from the stepped value) and makes the active room with seed `{that value, 666}`; a DRLG room whose tile build
+  made no wall or floor records gets no active room. Its
   collision grid is built from the near rooms that exist at that moment and is not refreshed when later neighbours
   appear; only units placed later write into it.
 - Population happens **on the next game frame**, in the pending-rooms loop (`0x408670`, called from the frame function
@@ -133,8 +137,9 @@ creation), not the room seed. Chests: trapped on `% 100 < MonLvl/8 + 5`, locked 
 3. A unique gets `3 + rand(4)` minions of monstats `minion1` (else its own class), with flag 0x10 and the leader's
    transferable mods.
 4. A champion gets `seed % 3 + 1` companions, each promoted to a champion with mod 16.
-5. The mods' start handlers run (table at `0x2395fe0`, by mod id). Mod 36 (ghostly) sets type flag 0x40, mod 38
-   (possessed) 0x20.
+5. The mods' start handlers run (table at `0x2395fe0`, by mod id; what each does is in [monster-ai.md](monster-ai.md)
+   section 8). Mod 36 (ghostly) sets type flag 0x40 and mod 38 (possessed) 0x20 in their handlers, not when the mod is
+   assigned. Minions run the leader's mod list.
 
 Mod rule for monumod: the champion chance lives in **row 0's `constants` column**, not in a column of its own;
 adding or reordering monumod rows moves the mod ids the hard-coded start handlers and the fixed boss mods expect.
@@ -155,8 +160,8 @@ here.
   `MinGrp..MaxGrp` plus the difficulty; a quest mod (22) appended.
 - A superunique uses its base monstats row's AI. One superunique is switched to a special AI state by the spawn code
   (section 6), and the hcIdx (superuniques row) drives a few hard-coded cases inside `0x499ba0`.
-- Whether superuniques also carry type flag 8 (unique) in D2R is **unverified** (classic does); AI code that tests
-  "unique" depends on it.
+- Superuniques do carry type flag 8: the end of `0x499ba0` runs the start handlers (one leader draw, mod 1, inside
+  the minion spawn), then counts the unit as a unique and appends mod 22.
 
 ### Monster level (`0x543120` -> `0x543b50`)
 
@@ -179,6 +184,9 @@ level's monster total. monstats `neverCount` is also how critters and quest mons
 
 ### Dispatch
 
+The short version; the tick step by step, target search, think scheduling and per-AI behaviour are in
+[monster-ai.md](monster-ai.md).
+
 - The AI think runs from the unit's **AI-think event** (event type 2; monster event table `0x1d1a7a0`, slot 2 =
   `0x4a2a00`). The end-of-animation handler also calls the tick directly.
 - Tick `0x4a2a00`: pre-checks `0x4a3a20` (stunned -> idle; door opening for monstats `opendoors`; minion leash: a minion
@@ -197,8 +205,9 @@ level's monster total. monstats `neverCount` is also how critters and quest mons
   monstats `switchai` clear, uninterruptable, or not attackable. Uniques are not refused by the getter.
 
 Target-search kinds (D2R numbering, renumbered from classic): 0 none (the AI searches itself), 1 find or idle in
-neutral, 2 find (null allowed), 3 new (one user), 5 and 6 = classic 4 and 5. Monsters only see players and pets in the
-same act, not in town, within `aidist` (monstats, per difficulty; 0 means 35).
+neutral, 2 find (null allowed), 3 new (one user), 5 and 6 = classic 4 and 5. Monsters only see players in the same
+act, not in town, within `aidist` (monstats, per difficulty; 0 means 35), plus the pets and hireling chained behind
+each player.
 
 ### Hooking one AI from a plugin
 
@@ -283,6 +292,8 @@ The "faster X" stats go through `0x3516c0` with diminishing returns `cap*v/(cap+
 
 - Each room keeps the ids of its **last four** dead monsters (`0x2ef9f0`); AIs that react to corpses (the fallen
   flee on a fresh corpse within 15, the shaman's resurrect search) only see those.
+- Player corpses (creation, pickup, the 16-corpse limit, the one-corpse save) are in [monster-ai.md](monster-ai.md)
+  section 10.
 - Monster resurrect is AI-driven: the fallen shaman looks for a dead (mode DD) fallen or shaman base class within
   aip4 (squared distance), skips unique and champion corpses, and takes the **last** match of the scan. A unique
   shaman searches any such corpse, not only its own minions.
@@ -314,7 +325,7 @@ The "faster X" stats go through `0x3516c0` with diminishing returns `cap*v/(cap+
   listed, not mapped.
 - The D2R get-hit / knockback "last mode" rule was taken from classic.
 - The writer of the minion leash owner (assumed: a group's boss, as in classic).
-- Which units carry AI flag 0x20 (heal and teleport when hurt).
+- Which units other than teleport-enchanted ones (mod 26) carry AI flag 0x20 (heal and teleport when hurt).
 - The per-mode animation speed branches in `0x350cb4`, and the monseq loader.
 - Terror Zone population (D2R-only step during monster init, active only in a desecrated level): not observed.
 - Acts II-V presets, water spawns (`spawnCol` 1) and the wandering-monster branch were not exercised.

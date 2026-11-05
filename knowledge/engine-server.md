@@ -13,7 +13,8 @@ anything "the game decides" hooks this half. This file is a map of it for mod an
 - Messages (ids, sizes, reply order) are in [network-messages.md](network-messages.md). Combat, regeneration,
   experience and formulas are in [combat-formulas.md](combat-formulas.md). Functions already listed in
   [d2r-93847-addresses.md](d2r-93847-addresses.md) are not repeated; the cube is in
-  [engine-limits.md](engine-limits.md).
+  [engine-limits.md](engine-limits.md); world objects (chests, shrines, wells, doors, traps) are in
+  [objects.md](objects.md).
 
 ## 1. Game loop and tick
 
@@ -331,7 +332,24 @@ personal stash, never the shared stash. The server recomputes every price; the c
   50000 / 2 / 15). Expansion games only. Hooking it replaces the price.
 - Heal on talk (`0x53fc50`): life, mana, stamina to max, removes listed states, heals pets.
 - Respec (`0x4b2530`, D2R respec `0x580f20`): needs the NPC respec byte and quest 41 "pending"; spending it sets
-  quest 41 granted.
+  quest 41 granted. The reset runs in this order (static only): skill refund `0x4360f0` (each owned class skill's
+  base level goes to 0 but the entry stays, passives refresh, S->C 0x21 per skill with the remaining bonus level,
+  then stat 5 `newskills` gains the total), then the stat reset `0x52ddf0` in the order strength `0x52e020`, energy
+  `0x52df20`, dexterity `0x52ded0`, vitality `0x52e070`. Each moves `charstats start - current base` between the
+  attribute and stat 4 `statpts`; vitality and energy move max life/stamina/mana by `per-point byte * delta * 0x40`
+  (32-bit, wraps), the current value only when the amount is positive, then cut to the new max. A save whose
+  attributes sit below the start values makes the pool go negative. Sound 2 plays at the end.
+- Imbue (Charsi, C->S 0x2e, exactly 21 bytes: +1 service, +5 NPC guid, +9 item guid, +0xd "has a location", +0x11
+  location; static only). `0x4fc230` runs **twice**: the handler with commit off, then a task on the game's task list
+  with commit on. Both passes check NPC reach (`0x53b8f0`, 0x32), the item (exists, identified, location matches,
+  `0x3865b0`), the service on the NPC row, the quest gate pending (quest 3 for Charsi), service = imbue (sockets and
+  personalize exist only on Act V rows) and the item test `0x36aed0`: an items.txt row, not gold, no flag 0x1000
+  (unsellable), `bitfield1` bit 0 set (clear for misc), no throwable type in a Classic game, not a quest item except
+  Wirt's leg, nothing socketed and no flag 0x800, quality low/normal/superior. Both passes work on a 0x4888-byte
+  inventory copy (`0x472590`, applied by `0x471500`). The new item (`0x43cd50`): same class, rare, ilvl = player level +
+  4 (D2R adds 4 at every level; classic only above level 5), capped at 255, ethereal kept, identified and repaired,
+  personalization kept. The spend `0x5da1c0` deletes every Horadric Malus carried and sets quest 3 granted. Reply S->C
+  0x58 (7 bytes: item guid, u16 6). Quirk: when the first pass's inventory step fails the reward is already spent.
 - Payment `0x5416d0`: carried, then stash. A pool that would end below 0 or above its cap is set to 0.
 
 ### Waypoints, town portals, travel
@@ -341,17 +359,24 @@ personal stash, never the shared stash. The server recomputes every price; the c
   word `1 + n/16` (word 0 is `0x0102`). Level -> waypoint number comes from levels.txt (row `+0xec`, `0x3d6670`;
   0xff = none); test `0x3d6930`, set `0x3d6890`. **Entering a level does not activate its waypoint**; touching the
   object (OperateFn 23, `0x58fe00`) does. The waypoint panel side is in [ui-layouts.md](ui-layouts.md).
-- Waypoint travel (C->S 0x4b, `0x4b6f10`, travel `0x5933f0`): the target bit must be set, a waypoint within 50, no Act
-  V in a Classic game, and **10 s** since the last warp. You arrive at the target's waypoint object (entry kind 13);
-  the level warp is `0x488180`.
+- Waypoint travel (C->S 0x4b, `0x4b6f10`, travel `0x5933f0`): the target bit must be set, a waypoint object within 50
+  whose own level's bit is also set, no cursor item, no Act V in a Classic game, and **10 s since the player last
+  declared hostility** (playerData `+0x1e8`, read by `0x507bd0`, written only by `0x507f30` from the declare-hostile
+  command; warps do not set it, so back-to-back waypoint trips are allowed) (high). A request for the level the player
+  is already on is accepted and does nothing. You arrive at the target's waypoint object (entry kind 13): a free-spot
+  search from the waypoint - (1, 1), then a walk to that spot + (3, 3); the level warp is `0x488180`.
 - Town portal `0x46fa70` (skill 411 = srvdofunc 109, or the item spell table): refused in towns and where the level
-  forbids it (`level+0x184`); one blue pair per player (a new cast retires the old); town end at entry kind 11.
-  Generic portal creator `0x432ce0`. Portal use (OperateFn 15, `0x58f680`): **5 s** since the last warp, a non-owner
-  must be in the owner's party, state 0x66 blocks reuse for 75 frames, landing at the twin + (5, 5); the owner going
-  town -> field uses the pair up, field -> town does not. The red portals have no owner and are never used up.
+  forbids it (`level+0x184`); one blue pair per player (a new cast retires the old); the field end starts its free-spot
+  search at the caster - (2, 0), the town end at entry kind 11. Generic portal creator `0x432ce0`. Portal use
+  (OperateFn 15, `0x58f680`): mode 2; a player in hostility (`0x424a60`, computed at each use) may take only its own
+  portals; **5 s since the last hostility declaration** (the same `+0x1e8` as waypoints, not the last warp); a non-owner
+  must be in the owner's party (a missing owner is let through); state 0x66 blocks reuse for 75 frames; the player is
+  put on a free spot at the twin and walks to that spot + (5, 5); the owner going town -> field uses the pair up,
+  field -> town does not. The red portals have no owner and are never used up.
 - Objects (C->S 0x13 / 0x41, `0x4b0f80` -> `0x593630`): the object row must allow operating in its current mode
   (`Mode0-7`), unit distance at most 50; only OperateFn 25 takes a cursor item. OperateFn numbers: 6 tome, 9 stones,
-  10 cage, 12 tree, 15 portal, 21 rack, 23 waypoint, 32 stash.
+  10 cage, 12 tree, 15 portal, 21 rack, 23 waypoint, 32 stash. Every check, the init and operate tables, chests,
+  traps, shrines, wells and doors: [objects.md](objects.md).
 - Warp hook used by plugins for entry rules: `0x491ff0`.
 
 ## 6. Quests
@@ -383,7 +408,16 @@ event callbacks at `+0x270 + 8*event`. The quest-control seed is at `+0x24` (`0x
 Events: 0 NPC opened (greeting), 2 NPC closed, 3 level changed, 4 item picked up, 5 item dropped, 8 monster killed,
 9 player dropped a quest item, 10 player left, 11 dialog choice, 13 player started the game, 14 player joined.
 Dispatch `0x518ec0(event, all)`; wrappers: NPC open `0x515980`, close `0x5158c0`, level `0x515c30`, item `0x515400`
-/ `0x5154e0`, **kill `0x515640`**, dialog `0x516940`. Quest timers `0x518680` (every n frames).
+/ `0x5154e0`, **kill `0x515640`**, dialog `0x516940`. Event 13 goes to the player who made the game, 14 to one who
+joined it.
+
+**Quest timers** (`0x518680` makes one, the quest update `0x516e40` runs them every 20 frames; medium): they count
+**quest ticks** (one per update), not frames. A new timer goes to the **head** of the list, due at `tick + n`;
+starting one that already runs adds a second. Each update first increments the tick, then walks the list newest first
+and runs every timer whose due tick is below the new tick, so `n` = 0 fires at the next update and `n` runs `n + 1`
+updates later. The callback returns 1 to drop the timer, else it stays and re-arms `n` ticks after the tick that ran
+it. D2R asserts when a timer is made during the walk; there is no cancel other than the callback. At tick
+`0xffffffff` every due tick is inverted.
 
 Rules that matter to a mod:
 
@@ -404,6 +438,26 @@ Rules that matter to a mod:
 - The Den of Evil reward also sets quest 41 granted and pending (the respec). None of the Act I quests gives stat
   points.
 - Add experience: `0x44f2e0` (used to award quest experience from a plugin).
+- Quest props set themselves up from quest state in their objects.txt `InitFn` (Cairn stones, tree, gibbet, Malus,
+  tower tome, Countess chest, Cain's start marker, the Lut Gholein Jerhyn and harem blocker): see
+  [objects.md](objects.md) section 3. A quest's extra fields follow the common ones (`+0x11` not intro, `+0x13`
+  shown status, `+0x14` state) at fixed per-quest offsets; when a quest's data is missing most props go to mode 2.
+
+**Cain's rescue (quest 4, static only).** Operating the cage (`0x5da980`) schedules object event 7 at frame + 17
+(`0x5d92e0`), which runs twice. First run: players in Tristram without granted/pending get started + pending, the
+others a log update, the status cycles to 6, sound 15, and the event re-arms after the cage animation (unit +0x64
+length, +0x68 speed). Second run: cage mode 3, walking Cain (monster 146) at cage + (2, 2) or a free spot within 3
+and sound 55 on the rescuer; if he cannot be made the first player in Tristram gets a town portal at cage + 5 and the
+town spawn becomes pending. The walking Cain's AI (`0x5c4c90` first think, `0x5c0db0` later) walks a few steps, opens
+his portal (object 189, `0x5d9be0`) and vanishes (`0x5dbc80`, which also makes the in-town portal and the town Cain
+when pending). Town Cain is monster 265, spawned by `0x5dcaa0` at a free spot within 2 of the start marker (object
+385), up to 20 diagonal retries, flags `| 0x3000000`; entering level 1 (`0x5df990`) or starting the game with quest 4
+granted (`0x5e0360`) also triggers it. No writer was found for the town Cain's walk target (quest +0xd0).
+
+**Andariel's poison spray** (srvdo 88, `0x578df0`, static only): the aim point is the start function's stored
+target (or the skill target when 0); the 64-step direction is reduced to 8 facings; for each whole animation frame
+4..12 in the window since the last update, the running point advances by the facing's step (frame 8 has none) and one
+missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, offsets X `0x1d09360` / Y `0x1d09380`.
 
 ## 7. Death, corpse, party
 
@@ -421,7 +475,10 @@ Rules that matter to a mod:
   when editing saves.
 - **Corpse** `0x42c110`: a player-type unit with the owner's name, the equipped items moved onto it, and 75% of the
   lost experience stored for recovery. Picking it up (C->S 0x13, within 8, a clear path) gives the experience back
-  once. Another player may loot it only in hardcore with loot permission.
+  once (`0x42b220` returns it between taking the items off the corpse and placing them, so a level-up can happen
+  mid-move). Another player may loot it only in hardcore with loot permission.
+- **Corpse cap**: with 16 corpses already (`0x3892d0`) no corpse is made; the player still enters Dead mode, the
+  loss record stays and the items go to the ground (medium).
 - **Respawn** C->S 0x3f (`0x4b6160`): only in the dead mode, refused in hardcore; full life/mana/stamina and a move to
   the act's town.
 - **Party**: the party iterator is `0x506ed0` (`0x506f90` is the one kill experience uses); kill experience with a

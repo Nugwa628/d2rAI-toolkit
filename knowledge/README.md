@@ -20,12 +20,19 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [combat-formulas.md](combat-formulas.md) | Hit chance, block, the damage pipeline and resist caps, crushing blow and open wounds, experience, skills and missiles, itemstatcost ops, hirelings |
 | [monsters-spawn.md](monsters-spawn.md) | Room population, monster density and packs, superuniques, the AI table and aip parameters, corpses and resurrection |
 | [map-generation.md](map-generation.md) | Level generation: seed chain, act and level layout, the tables that drive it, tiles and rooms, room streaming, travel and act change |
+| [items-inventory.md](items-inventory.md) | Death drops (TC choice, ground spot search), item ids and seeds, level requirement, main weapon and inventory requests, vendor stock, restock, prices and transactions |
+| [skills-missiles.md](skills-missiles.md) | Skill start/do and per-slot behaviour (RVAs, seed draws, D2R changes), monster per-attack stat draws, the missile hit handler, timed states and curses, mercenary AI, stats and item giving |
+| [monster-ai.md](monster-ai.md) | The AI tick and target search, think timing, what each common AI does with its aip values, hirelings and summons, unique-mod start handlers at monster init, the 0xac message, player corpses |
+| [objects.md](objects.md) | World objects: populate/init/operate tables, PreOperate and mode jitter, chests and their TC level, traps, shrines, wells, doors, portal pairs, object messages |
+| [movement-modes.md](movement-modes.md) | Collision bits and move masks, path finders and the step, line of sight, speed, unit modes, animation timing and breakpoints, the event queue, mode and walk messages |
+| [units-stats.md](units-stats.md) | Units, stat lists, states and party records: unit header, allocation and ids, seed draw order, stat list flags, state bits, relation and party rules, server timing |
 | [network-messages.md](network-messages.md) | Client/server game messages: framing and sizes, the useful ids, server hook points, the join in order, item action codes, weapon swap |
 | [d2r-93847-addresses.md](d2r-93847-addresses.md) | Address registry for build 93847: functions, tables, record and unit offsets, entry bytes |
 | [debugging.md](debugging.md) | Symptom -> cause -> fix table from real bugs, and where every log lives |
 | [crash-triage.md](crash-triage.md) | From a player's crash report to a fix: RVA from RIP, stack return addresses, Ghidra, which logs to ask for, a worked example |
 | [d2rloader.md](d2rloader.md) | D2RLoader facts and traps: default mod, the cache-building first start, other plugins, version checks, its files |
 | [porting-classic-mods.md](porting-classic-mods.md) | Porting a classic 1.13c-era mod: inventory, table-by-table conversion, ids that must not move, function numbers, events, art order |
+| [plugin-techniques.md](plugin-techniques.md) | Plugin feature recipes: belt refill, buff HUD from tables and the 25 fps clock, weapon swap, waypoint UI from actinfo, running many clients (shared Settings.json, RAM) |
 | [modkit-ops.md](modkit-ops.md) | The modkit's patch operations (JSON ops applied by `modkit build`) |
 
 ## Rules that apply to every file

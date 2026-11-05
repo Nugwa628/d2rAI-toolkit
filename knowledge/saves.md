@@ -56,8 +56,9 @@ Notes on the sections:
 - **Root count**: socketed items (gems, runes, jewels at location 6) follow their parent and do not count as roots.
 - **Mercenary present** when its experience, seed or name field in the header is nonzero (observed in the loader
   logic); only then is `jf` followed by an item list.
-- **Corpse**: after a death the save holds one corpse (count 0 or 1 in practice, at most 16) with the items it
-  carries. D2R picks the corpse up when the character next enters a level; the next save has count 0.
+- **Corpse**: after a death the save holds one corpse (count must be 0 or 1: more fails the load) with the items it
+  carries. On join the corpse is placed next to the act's town start; once emptied, the next save has count 0
+  (corpse rules in [monster-ai.md](monster-ai.md)).
 
 Addresses, build 93847 (static reading in Ghidra): save path and its 16 KiB buffer `0x4135d0`; save assembly
 `0x52f090` (32 KiB item scratch buffer); header writer `0x534340`; `if` reader `0x52e910`; mercenary rebuild
@@ -111,7 +112,7 @@ def fix_checksum(d: bytearray) -> bytearray:
 ## D2RLoader sidecar `<name>.d2rl`
 
 | Offset | Size | Field |
-|---|---|---|
+|-|-|-|
 | 0x00 | char[4] | `D2RL` |
 | 0x04 | u16 | version 2 |
 | 0x06 | u16 | header size `0x2c` |
@@ -171,10 +172,39 @@ ears, sockets) is in [item-format.md](item-format.md). Short form:
 Save pages are the engine page + 1: inventory 1, cube 4, stash 5 (location 0 = grid). Location 1 is the body, 2
 the belt (slot in x), 4 the cursor, 6 inside a socket.
 
+Item stat fields hold `(value >> ValShift) + Save Add`, so a load and save drops the low shifted bits; `gf` is never
+shifted. The exact writer and reader rules are in [item-format.md](item-format.md#stat-values-and-valshift).
+
+## What the game does on load
+
+Build 93847, from the save processor `0x52e910` (static reading unless noted):
+
+| Step | What happens | Confidence |
+|-|-|-|
+| Header (`0x531e70`) | allocates the player unit (`0x490410`), then `0x531180` -> `0x490b00`: **one** game-seed step, low word -> unit `+0x30`, seed `+0x28` = `{low, 666}`; player in mode 1 | static only |
+| Items | the item section goes through a D2RCore thunk (`0x3e2b6ca`) back into the exe (`0x41f0b0`), which picks the reader by version (`0x421d20` for 105). Each root item and each socket child is made through the unit allocator: **two game-seed steps and the next item id each**, in save order; an item it skips is still made, then freed | high (seed and id order matched the join) |
+| Then | corpses (`0x531af0`, a corpse body is seeded from the game seed), the hireling (`0x530d70`), the other sections; each shared-stash tab holder unit (`0x52f8d0`) is seeded the same way | static only |
+| Stat rules (`0x5311f0`) | carried gold (14) below 0 or above `10000 x level` -> **0**; stash gold (15) below 0 or above 2,500,000 -> 0; stamina (10) -> max; life (6) 0 -> max life, else capped at max (items included); mana (8) -> max if the saved life was 0, else capped. Also sets stats 67, 68, 69 to 100 and stat 30 from class and level | static only |
+
+So an edited gold value above the limit loads as **zero**, not as the limit. Classic wrote life and mana back
+unchanged; the cap and refill are D2R's.
+
+Other load facts:
+
+- More than one corpse: the save does not load (`0x531af0` takes 0 or 1).
+- Items with the same 128-bit realm id: only the first loads, the rest are dropped (observed). Give every
+  hand-made item its own id.
+- The quest record gets a load reset (see [engine-server.md](engine-server.md#6-quests)).
+- New character names: 2-15 ASCII letters with at most one `-` or `_`, never first or last.
+- Join: right after the unit control message the owner gets every item once in save order: equipped 0x9d action 6,
+  stored (inventory, cube, stash) 0x9d 4, belt 0x9c 0x0d, socket children 0x9d 0x12 right after their parent.
+  Cursor, ground and dropping items are not sent. Another client only gets the equipped items (and their sockets)
+  when the player's unit reaches it (observed for the owner; other clients static only).
+
 ## What is safe to hand-edit
 
 | Edit | Safe? |
-|---|---|
+|-|-|
 | Level (header + stat 12), experience, stat points, skill points, base stats | Yes (fix checksum, size, sidecar) |
 | Class skill bytes ("if") | Yes |
 | Gold, waypoints, quests | Likely (not tested in game) |

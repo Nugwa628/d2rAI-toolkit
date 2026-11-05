@@ -14,7 +14,11 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
   How the server half behaves (drops, inventory, vendors, quests, death) is in `knowledge/engine-server.md`; combat and
   character numbers in `knowledge/combat-formulas.md`; spawning and monster AI in `knowledge/monsters-spawn.md`;
   level generation and travel in `knowledge/map-generation.md`; client/server messages in
-  `knowledge/network-messages.md`; the item record in `knowledge/item-format.md`.
+  `knowledge/network-messages.md`; the item record in `knowledge/item-format.md`. Deeper topic files: drops,
+  inventory and vendors in `knowledge/items-inventory.md`; skill functions and missiles in
+  `knowledge/skills-missiles.md`; monster AI and corpses in `knowledge/monster-ai.md`; world objects in
+  `knowledge/objects.md`; pathing and unit modes in `knowledge/movement-modes.md`; units and stats in
+  `knowledge/units-stats.md`; plugin recipes in `knowledge/plugin-techniques.md`.
 - `docs/`: how to run a project. `docs/ai-workflow.md` is the method for a mod built with AI agents: a coordinator
   plus parallel lanes, model choice, game slots, the bug list, releases, safety.
 - `templates/`: fill-in files for a new project: coordinator prompt, lane rules, lane prompt, `bugs.md`, `PLAN.md`,
