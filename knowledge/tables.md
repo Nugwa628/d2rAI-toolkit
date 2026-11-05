@@ -142,6 +142,32 @@ Semantics worth knowing (build 93847, read from the code):
 | **plrmode / monmode** | row = mode index | Keep D2R's `Code` column exactly (Sequence `SQ`, Knockback `KB`; the `Token` column is `GH` for both) |
 | **skillcalc / misscalc** | row = code number | D2R's rows first in D2R's order; append new codes (they need a plugin to evaluate) |
 
+## In-memory records the server reads (build 93847)
+
+Static reading; how the values are used is in [units-stats.md](units-stats.md) and
+[combat-formulas.md](combat-formulas.md).
+
+| What | Value (build 93847) | Confidence |
+|-|-|-|
+| itemstatcost flags (record `+0x04`) | bit 0 `Send Other`, 1 `Signed`, 2 `damagerelated`, 3 `direct`, 8 `UpdateAnimRate`, 9 `fMin`, 10 `fCallback`, 11 `Saved`, 12 `CSvSigned` | high |
+| itemstatcost derived fields | `+0x4d` "is an op base", `+0x4e` "has op data", `+0x4f` "op applies to items" (op 4/5), `+0x50` op, `+0x54` op stats (3), `+0x5a` dependents (64 u16, end `0xffff`), `+0xda` op data (16 entries of 6 bytes: op base, stat, op, param) | high |
+| Op table loader | `0x31e310`: fills `+0x5a..+0xda` with `0xffff`, then per stat in row order sets op base, dependents and op data; an op outside 1-13 becomes 0. A stat counts as an op base even when its op stat names no valid stat | high |
+| states `nosend` | bit 0 of the byte at states record `+0x10` | high |
+| `op base`, `op stat1-3`, `maxstat`, states `stat` | hold stat **names**, resolved at load | high |
+| `*ID` comment columns | can disagree with the row index; the row index is the id | high |
+| charstats | 8 class rows after dropping `Expansion` (7 = Warlock); per-point values in quarter points | high |
+| hireling names | the first mercenary name string (`merc01`) is id 3411 in 93847 | medium |
+
+**`expfield.d2`** (loader `0x3e3150`, walk `0x3e33b0`; high for the layout): a version word, then
+the width and the height as dwords. The x centre comes from the first size word and the y centre from the second;
+rows step with a fixed stride of 256. The vanilla file is square, so a reader that swaps the two words only fails on a
+non-square file. `animdata.d2` is the other binary file in `data/global/` the server side reads
+([monsters-spawn.md](monsters-spawn.md)).
+
+**Volume.** The vanilla `excel/` bank plus those two files is 69 files and about 2.9 MB, about 1.15 million cells
+once every row is padded to its header width (observed). A wide header over many short lines can hold millions of
+cells in a few KiB: cap cells, not just bytes, in any external reader.
+
 ## Mod folder layout under D2RLoader (as the port installed it)
 
 ```

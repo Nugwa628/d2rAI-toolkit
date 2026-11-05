@@ -118,6 +118,12 @@ More than 9 waypoints in one act needs a plugin (build 93847): hook the tab fill
 (`0x1ea198`, `0x1ec05a`, `0x1ec582`) at it and set the count dword `0x2a969d4` (done in game in one port; a tab
 then shows more than 9 buttons, so give the layout room).
 
+| What | Value (build 93847) | Confidence |
+|-|-|-|
+| Tabs II-V enabled | by the client's quest records 7, 15, 23 and 26 (bit 0 each); setting them enabled the tabs in a test | observed |
+| Panel opens | when the server sends the waypoint record (message `0x63`), as on touching a waypoint ([network-messages.md](network-messages.md)) | observed |
+| Act ranges | from the actinfo rows; take them from there in a plugin too ([plugin-techniques.md](plugin-techniques.md)) | high |
+
 ## Panel messages and plugin panels
 
 - Layout buttons can send the stock `PanelManager` messages in `onClickMessage`:
@@ -129,6 +135,13 @@ then shows more than 9 buttons, so give the layout room).
   open them only from the UI thread.
 - The SDK's overlay drawing has lines, rectangles and text, no sprites: an icon bar drawn by a plugin has to be
   rectangles (or text) unless you place widgets in a layout.
+- An extra page for a stock panel works as a plugin panel in the same slot plus a small page strip on both (for
+  example "1 / 2" with arrows) whose arrows send `PanelManager:TogglePanel` / `ClosePanel` for the stock root and the
+  plugin root (done for a second personal stash page over `BankExpansionLayout`; observed). Hide the strip when the
+  plugin part is off.
+- Size and place plugin overlays in units of the window height, measured from the screen centre and bottom like the
+  HD HUD, so they stay in place at every resolution and aspect ratio; snap rectangles to whole pixels.
+- Buff bars, belt refill and other HUD helpers: [plugin-techniques.md](plugin-techniques.md).
 
 ## Gold widgets
 

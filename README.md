@@ -335,12 +335,19 @@ in an area. It's also good reading for human modders.
 | [combat-formulas.md](knowledge/combat-formulas.md) | Hit, block, damage and resist rules, experience, skills, hirelings |
 | [monsters-spawn.md](knowledge/monsters-spawn.md) | Monster spawning, packs, superuniques and the AI table |
 | [map-generation.md](knowledge/map-generation.md) | How levels are generated, streamed and travelled |
+| [items-inventory.md](knowledge/items-inventory.md) | Death drops, item ids and seeds, level requirement, inventory requests, vendor stock and prices |
+| [skills-missiles.md](knowledge/skills-missiles.md) | Skill start/do per slot, missile hits, timed states, mercenary AI |
+| [monster-ai.md](knowledge/monster-ai.md) | The AI tick, target search, common AIs and their aip values, monster init, player corpses |
+| [objects.md](knowledge/objects.md) | Chests, shrines, wells, doors, traps and portals: populate, init and operate functions |
+| [movement-modes.md](knowledge/movement-modes.md) | Collision, pathfinding, line of sight, speed, unit modes, animation timing, the event queue |
+| [units-stats.md](knowledge/units-stats.md) | Unit header and ids, seed draw order, stat lists, states, party records, timing |
 | [network-messages.md](knowledge/network-messages.md) | Game messages a plugin author sees when debugging: ids, join order, item actions, weapon swap |
 | [d2r-93847-addresses.md](knowledge/d2r-93847-addresses.md) | Address registry for build 93847: functions, tables, record and unit offsets |
 | [debugging.md](knowledge/debugging.md) | Symptom → cause → fix, from real bugs, and where every log lives |
 | [crash-triage.md](knowledge/crash-triage.md) | From a player's crash report to a function and a fix, with a worked example |
 | [d2rloader.md](knowledge/d2rloader.md) | D2RLoader facts and traps: default mod, the first start, other plugins, version checks |
 | [porting-classic-mods.md](knowledge/porting-classic-mods.md) | Porting a classic mod: inventory, table conversion, fixed ids, function numbers, art order |
+| [plugin-techniques.md](knowledge/plugin-techniques.md) | Plugin recipes: belt refill, buff HUD, weapon swap, waypoint UI, many clients on one machine |
 | [modkit-ops.md](knowledge/modkit-ops.md) | Every patch operation `modkit build` understands |
 
 ## How the AI workflow works

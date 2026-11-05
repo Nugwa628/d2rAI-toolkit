@@ -2,7 +2,7 @@
 
 What a mod that ships through D2RLoader 1.3.1 (PluginSDK 0.3.0) runs into on players' machines. Seen in a large
 overhaul released to players. Plugin API details: [engine-re.md](engine-re.md) and
-`third_party/PluginSDK`.
+`third_party/PluginSDK`; feature recipes built on these services: [plugin-techniques.md](plugin-techniques.md).
 
 ## How D2RLoader picks the mod
 
@@ -82,6 +82,42 @@ A player's log is often all you get. Make it answer the first questions without 
   log that ends there shows it
 
 Keep it short in normal play: count repeated events and log the 1st, 100th, 10,000th.
+
+## Stash settings
+
+| What | Value (D2RLoader 1.3.1) | Confidence |
+|-|-|-|
+| More shared stash tabs | `add_shared_tabs = N` under `[d2rcore.stash]` in the mod's `d2rloader.toml`: D2R's 3 shared tabs + N. With 7, items created into tabs 0-9 landed, tab 10 was refused | observed |
+| Installer and the key | write it only when the player has not set it by hand | |
+| Extra personal stash page | D2RLoader has one custom player page (logical id `stash2`, item page 6, 14 x 14 in one port). Nothing shows it: a plugin panel in the left gameplay slot over the stock stash (`BankExpansionLayout`) with page arrows that send `PanelManager` messages did ([ui-layouts.md](ui-layouts.md)) | observed |
+| A page registered through the inventory service | saved with the character; a character with items there refuses to load without the plugin ([saves.md](saves.md)) | observed |
+
+## Threads and SDK services
+
+| Rule | Why |
+|-|-|
+| Game (server) work runs inside the server frame: queue it from a frame hook (after the game-frame function) | Units, rooms and stat lists change only there; calls from another thread race the frame |
+| The UI thread must **never wait** for a game-thread job | In single player the server frames are driven from the UI thread: waiting deadlocks the game. Queue the job and read the answer on a later frame |
+| UI work (open a panel, press a panel button, reveal the automap, run a console line) goes to the UI thread through the thread service | Panel and automap code expect the UI thread |
+| Overlay drawing: a frame callback in the after-game-UI phase, client side | Draws on top of the HUD; lines, rectangles and text only |
+| A UI message listener sees the stock panel messages (a panel opening or closing) | Use it to know whether, say, the cube panel is open before acting on it |
+| The widget service can send stock UI messages (`PanelManager:OpenPanel:<root>`) and read or hide widgets | Same effect as a layout button |
+| Item service transactions | Create, list and move items between pages in one transaction; a tab beyond the configured count is refused |
+| `ExecuteConsoleCommand` (D2RCore) runs a console line on the UI thread | Output of D2R's own commands and cheats goes only to the console panel: a plugin cannot read it back |
+| Every called (not hooked) game function: check its first bytes before the first call | A mismatch switches that feature off with a log line instead of jumping into other code |
+
+## Input actions
+
+Actions registered through the input service appear in D2R's Controls menu under the plugin's category and can be
+rebound; the first registration stores the key ([Files D2RLoader keeps](#files-d2rloader-keeps)). Choose defaults
+D2R does not use: in 93847 **R** is run/walk, **C** the character screen and **V** another stock action, so a plugin
+default on those presses two actions. X, L and K were free (observed).
+
+## Table compile notes
+
+- Without `-txt`, D2RLoader 1.3.1 still compiles the mod's tables: the log reads "Compiled N tables from TXT ...
+  G game, M mod" (observed on a release install).
+- `objtype.txt` is not compiled in either mode (observed): check the installed file itself, not the compile log.
 
 ## Plugin flags
 

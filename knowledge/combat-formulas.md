@@ -66,7 +66,13 @@ chance = clamp(2 * factor * attackerLevel / (attackerLevel + defenderLevel), 5, 
 - monster: monstats `ShieldBlockOverride` 1 = always `ToBlock`; 0 = `ToBlock` only while it carries a shield; any
   other value = never blocks.
 
-**Order** (`0x44b930`): a player who is running (or walking in town) blocks at a third. With a block rate above 0
+- The shield comes from `0x385be0`, which passes over a hand item failing `0x36ad20`: a **broken shield gives block
+  rate 0** (**checked**).
+- A monster with `ShieldBlockOverride` 0 counts as carrying a shield exactly when its component 7 (monster data
+  +0x08, 16 component bytes) is nonzero (**checked** on a few hundred live cases).
+
+**Order** (`0x44b930`): a player who is running (or walking in town) blocks at a third; plain walking keeps the full
+chance. The moving-mode test `0x34c390` reads the animation sequence's mode while a sequence runs. With a block rate above 0
 the defender draws `% 100`. Otherwise (`0x44ef70`): a walking or running defender can only **evade** (stat 340);
 a standing one tries **weapon block** (stat 348, only with two claws), then **dodge** (338) or **avoid** (339). The
 first success stops the chain and requests the skill mode named by stat 350.
@@ -74,6 +80,24 @@ first success stops the chain and requests the skill mode named by stat 350.
 A forced skill (skills.txt flag at record +0x29) skips block/dodge. GetHit is set unless the defender has state 54.
 
 ## 3. Damage pipeline
+
+**Three attack paths** decide whether the fill below runs on a miss:
+
+| Path | Order | Fill on a miss |
+|-|-|-|
+| normal attack (srvdo 1, `0x42feb0`) | to-hit with stat 325 (`0x44b720`), then the weapon fill, then AllocCombat (`0x44b600`), which does not fill again | yes |
+| monster plain attack (event `0x446000` -> `0x588800`) | result flags with to-hit 0 and no force, AllocCombat with srcDam 128, then the hit frame `0x44b2b0(game, monster, target, 0, 1)` | **no**: a miss, block or dodge draws nothing after the avoidance rolls |
+| skill swing | to-hit with the skill's own bonus; the fill runs inside AllocCombat | no |
+
+The monster path is **checked** on about 7,700 live monster attacks; treating a monster swing as the normal attack
+drifts its seed by about three draws per miss. Leap (srvst 40) also swings through `0x588800`. Smite and the
+assassin finishers have their own order ([skills-missiles.md](skills-missiles.md#2-start-and-do)). A swing at a unit
+already dying (mode 0) still makes every draw but gives no kill and no experience.
+
+**Per-attack stats** (`0x588d50(monster, mode)`): mode change (`0x4475c0`) calls it for every mode but GH, after
+clearing state 54 (a dead monster stops there). It draws `% 100` per monstats El slot of that mode whose chance is
+1-99, plus `% 5 + 1` for a random-element slot, on the monster's seed. Five skill slots call it too
+([skills-missiles.md](skills-missiles.md#3-monster-per-attack-stats-inside-skill-slots)).
 
 `FillDamageValues` (`0x44c030`, **checked**). `srcDam` is a **byte**: only the low 8 bits count, and 0 means 128
 (= 100%). This runs on a **miss too**, so its rolls are spent either way.
@@ -147,16 +171,91 @@ poison, burn; then events 10 and 9.
   divisor. `cb = life / divisor`, reduced by `min(DR%, 100)`; life floors at 0.
 - **Open wounds** (function 15, `0x584170`): `% 100 < stat 135`. Regen loss by attacker level: 40 at level 1, then
   `9L+31`, `18L-104`, `27L-374`, `36L-779`, `45L-1319` in 15-level bands. Players take a quarter (an eighth from
-  missiles), champions and uniques half. State 62 for 200 frames with stat 74 = -loss.
+  missiles), champions and uniques half. State 62 for 200 frames with stat 74 = -loss, through the timed-state
+  helper `0x433d20`: a defender that already has the state **keeps its first loss** and only restarts the 200
+  frames, and npc or non-attackable monsters get nothing (**checked**; classic rewrote the loss each time;
+  [skills-missiles.md](skills-missiles.md#8-timed-states-from-hits-and-skills-0x433d20)).
+- **Hireling test** `0x3af240` is by class: a monster whose class has a hireling.txt row counts as a hireling whether
+  hired or not (the Act I camp rogues). It drives the to-hit halving, the crushing blow divisor, the leech path and
+  the unit-kind damage percents alike (**checked**).
 - Item event functions run **newest-registered first** on a unit. Which of crushing blow and open wounds rolls
   first when an item has both is **unverified**.
 - **Hit recovery** (`0x44a9b0`): a player reacts only when not already in a hit-react mode and `stat 183 + buffer <=
   frame`, where the buffer is difficultylevels' hit-react buffer (vs player / vs monster) and stat 183 is written when
   the player *leaves* get-hit, block or knockback. Then `0x44fba0` makes two defender draws (`& 1` then `& 3`) to
   decide whether hit recovery is skipped. **Frame counts for FHR/FCR/IAS breakpoints were not documented here.**
-- **Durability** (`0x4526c0`): `% 7`, then a weighted pick over the armor slots.
+- **Block animation**: a player shown a block (0x10 or 0x8000, not a soft hit) enters block mode (9) only when it
+  can react (above), has no mode change queued (`0x48b230`) and `frame - stat 95 > stat 102 / 8 + 15`; stat 95 then
+  takes the frame (**checked**). A monster with a block mode blocks unless the hit is soft or it is class 243, 333 or
+  705. Dodge, avoid and evade start the sequence mode (13) with stat 350's skill.
 - **S->C 0xad** (12 bytes, builder `0x477720`) reports each attack: attacker and defender ids, types, success, crit,
   damage as a 0-255 fraction of max life, hit class.
+
+**Stored hits.** AllocCombat ends by storing a copy of the block (`0x4507b0`) on the attacker's list at unit
++0x108, misses and avoided hits included, for player and monster defenders only. A record is 0x1a0 bytes: +0x08 / +0x0c
+attacker type and id, +0x10 / +0x14 defender type and id, +0x18 the 0x180-byte block, +0x198 next; new records go in
+front. The hit frame `0x44b2b0` takes the **first** (newest) record of the pair; none means nothing happens. It then
+runs the range check (`offset + 3` monster, `+ 1` player), ExecuteEvents on a hit, the overlay, the hit class,
+durability, events 7 and 3, thorns, and the reaction `0x44a9b0`. A dead attacker (mode 0) at either check ends the
+hit **without freeing** its records; every other path, out of range included, frees all records of the pair.
+Monster and player removal frees the whole list. There is no cap on the list. **read**.
+
+**Death drop**: the killing hit frame runs the drop (`0x4479a0`) at once, on the dying monster's seed, before anything
+else draws on that seed (0-9 draws seen per kill, **checked**).
+
+**Missile hits** (`0x462e40`, called from the missile hit handler,
+[skills-missiles.md](skills-missiles.md#7-missile-hit-handler-0x4639a0)), after the damage roll and srvdmgfunc on the
+missile's seed:
+
+1. Hit; GetHit (missiles.txt GetHit) or SoftHit unless the defender has state 54; the knockback draw
+   `% 100 < KnockBack` on the missile's seed when the column is nonzero; the hit class (the missile's over the old
+   layer); hit flags 0x20 / 0x80 from the missile; the damage rate (stat 327).
+2. Block or avoid (`0x44b930`, bAvoid 1, bBlock = physical damage present) on the **defender's** seed.
+3. A missile with neither GetHit nor KnockBack turns any block, avoid, dodge, evade or weapon block into a soft hit
+   (0x4000, Hit cleared). Otherwise evade sets 0x200, avoid 0x100, block or weapon block 0x10 (dodge sets nothing),
+   each clearing Hit.
+4. The monster crit (`0x5889e0`) on the owner's seed.
+5. If the hit stands: ExecuteEvents as a missile (CalculateTotalDamage first), then `0x436fe0` (not identified).
+6. The reaction `0x44a9b0`; then a non-hireling monster defender gets the missile's stat 120 added to its defense.
+
+**Draw order of one melee hit**:
+
+| Step | Unit | Draws |
+|-|-|-|
+| result flags | attacker | to-hit `% 100` |
+| | defender | block `% 100` (rate > 0), then evade / weapon block / dodge / avoid |
+| fill | attacker | physical, crits, elements, drains, poison, burn, conversion, monster crit |
+| ExecuteEvents | attacker | item event functions on event 5 (crushing blow, open wounds), leech `& 1`, stun `% 100` |
+| | defender | cold shatter `% 100` |
+| hit frame | attacker | weapon durability `% 100` (player attacker) |
+| | defender | durability `% 7`, `% weight`, the picked armor's `% 100` |
+| reaction | defender | hit recovery `& 1`, `& 3` |
+
+### 5.1 Durability (`0x4526c0`, `0x441b10`)
+
+At the end of a landed melee hit frame (**read**, not run):
+
+- A player attacker wears the weapon of its current skill. A player defender draws `% 7` for a start index into the
+  body slots {head, torso, right arm, left arm, belt, feet, gloves} and `% total weight` over the occupied ones
+  (weights 3, 5, 4, 4, 2, 2, 2), walking from the start until the weight lands.
+- One item (`0x441b10`): only armor (type 50) or weapons (45) whose base has durability. Chance: armor 10, throwing
+  weapons 10 (no draw at all in a classic-edition game), other weapons 4; `% 100` on the **owner's** seed.
+- On a wear: durability - 1 while that stays >= 1 (capped at the max after its percent stat), then S->C 0x3e with
+  stat 72. At 1, a non-weapon breaks (`0x46e680`); a weapon goes to 0. An ordinary non-stacking weapon has quantity
+  0, so it takes the quantity path (`0x42bde0`) and stays equipped at durability 0 until `0x42bcb0` breaks the
+  depleted equipped weapons after the attack (the first also returns the player to neutral). A stack with quantity
+  >= 2 loses one and refills durability.
+- Replenish stats 252 (durability) and 253 (quantity) schedule an item StatRegen at `frame + 1 + 2500 / rate`, only
+  when none is pending.
+- After a stack runs out (`0x42bde0` -> `0x42eaa0` on both arm slots): quantity >= 1 nothing; item_throwable (125)
+  sets quantity 0; not stackable nor throwable nothing; a magic-or-better weapon breaks; any other stack is
+  replaced by a same-code stack from the inventory and removed.
+- Breaking (`0x46e680`): item flag 0x100, the item comes off the owner (`0x475020`), durability 0 with its 0x3e, the
+  inventory refresh `0x470ca0` drops its stats, then the owner refreshes. The next unit update sends S->C 0x7d
+  (18 bytes: owner type, owner id, item guid, flag 0x100 broken / 0x200 repaired, value).
+- S->C 0x3e item stat (11 bytes for a small guid and value): bits LSB first, guid with a 1-2 bit width prefix (8,
+  16 or 32 bits), a flag bit, a **16-bit** stat id (classic 9; ids above 0x7fff send nothing), the value in the
+  same variable-width form, a 32-bit layer.
 
 ## 6. Experience, levels, death
 
@@ -181,7 +280,8 @@ Above level 24, against a higher monster: `xp * playerLevel / monsterLevel`. The
 
 **Party split** (`0x44a3b0`): members alive, within 80 subtiles, at most 8. `pool = xp + (89 * (n - 1) * xp >> 8)`
 (64-bit), `share = level_i * pool / levelSum` in double (classic used float and 32 bits). If no member qualifies,
-**nobody** gains. The player's mercenary gets its own award first, `* 86 / 256` unless it landed the kill.
+**nobody** gains. A monster at x 0 counts nobody; when exactly one member counts, the killer gets its solo award
+whoever that member is; a killer in no party gets its solo award with no tests (`0x506f90`, `0x44fd50`). The player's mercenary gets its own award first, `* 86 / 256` unless it landed the kill.
 
 **AddExperience** (`0x44f2e0`): u32 add capped at the threshold of MaxLvl - 1; level change calls LevelUp
 (`0x52da30`).
@@ -202,6 +302,9 @@ charstats column; classic hard-coded 1). Item ops that scale per level (op 4/5) 
   subtiles with a path test; 9-50 is refused silently. Respawn (C->S 0x3f) is refused in hardcore.
 
 ## 7. Skills and missiles
+
+Per-slot behaviour, the missile hit handler, timed states and mercenary AI are in
+[skills-missiles.md](skills-missiles.md).
 
 **Effective level** (`0x3400a6` body, build 93847): base + bonus, clamped to 0 and to experience.txt MaxLvl (99). Bonus
 = entry bonus + 2 under the skill shrine (state 134) + all skills (127); for players (and monsters standing in for a
@@ -307,6 +410,21 @@ energy adds `ManaPerMagic * 64` to mana and max mana, vitality `LifePerVitality 
 - Running drain (`0x42dca0`): `2 * RunDrain`, times `(armor speed / 10 + 1)` with body armor, reduced by stat 154,
   at least 1.
 
+**Monster regen and damage over time** (StatRegen event 3, `0x448c00`, no draws, **read**). Poison and burn are state
+lists (2 and 115) carrying a negative stat 74, so they tick here every frame:
+
+1. regen = stat 74; with a Life-flag state on (`0x335e80`) the base stat 74 is taken off.
+2. Prevent-heal (52) and regen >= 0: stop without rescheduling.
+3. Re-arm at frame + 1; regen 0 removes the timer instead.
+4. regen < 0, life below one point, and no room or a town room: stop.
+5. life + regen, capped at max life (which also ends the timer), floor 0.
+6. When `|stat 352 - hp/128| > 4`: queue S->C 0xab and update stat 352.
+7. Life 0 and not dying: the killer is the owner of the poison (state 2) list, else of open wounds (62). With state
+   54 the monster only gets DeathDelay (92); otherwise KillMonster (`0x44db20`), event 10 on the monster and event 9
+   on the killer.
+
+Players (`0x42e600`) re-arm first, skip the dead, and never drop below one point: **poison cannot kill a player**.
+
 **Potions** (item spell 3, `0x57ecb0`): HealthPotionPercent / ManaPotionPercent for players (others x2), then an
 attribute roll that can double the value. Timed potion totals: [engine-limits.md](engine-limits.md#items-inventory-sets-runes-cube).
 
@@ -400,6 +518,12 @@ modes 7/8, A1 otherwise. Elemental attacks with a `noRatio` row get no DM scalin
 | `0x44ce80` | ExecuteEvents (leech, stun, cold, poison) | on-hit effects |
 | `0x44a9b0` | apply hit, hit recovery | hit-react rules |
 | `0x583150` / `0x584170` | crushing blow / open wounds | their formulas |
+| `0x588800` / `0x588d50` | monster plain attack / per-attack stats at a mode | monster swing rules |
+| `0x44b2b0` / `0x4507b0` | hit frame / store the hit block | delayed hits |
+| `0x462e40` | a missile landing on a unit | missile block, knockback |
+| `0x441b10` / `0x46e680` | durability wear / break an item | wear rules, indestructible |
+| `0x448c00` | monster StatRegen tick (poison, burn) | damage over time |
+| `0x433d26` | timed state from a hit or skill (body behind the `0x433d20` thunk) | curse and state stacking |
 | `0x44a3b0` / `0x44ece0` | kill experience split / award | experience rules |
 | `0x424ac0` / `0x425cb0` | death experience / gold penalty | death rules |
 | `0x42e600` | player regeneration event | regen rules |

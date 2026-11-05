@@ -103,6 +103,34 @@ after the shift, and a follower whose value is already what its leader wrote. En
 parameter). A stat with a parameter but no `Save Param Bits` makes the writer fail the whole record: an empty item
 packet and a client crash ([saves.md](saves.md#notes)).
 
+### Stat values and ValShift
+
+Under D2RLoader 1.3.1 the narrow (save) item stat writer and reader live in D2RCore: writer core `0x3cb1c0` (called
+from `0x830ff0`), reader core `0x3c9f40`, one ordinary stat core `0x3cbe70` (core RVAs = offsets in D2RLoader's
+D2RCore module, not D2R.exe; static only). The unit's stat list holds 32-bit values; the field holds
+`(value >> ValShift) + Save Add` (arithmetic shift). The game keeps the list sorted by (id, parameter); the setter
+(core `0x3d95c0`) overwrites an existing entry and removes one set to 0.
+
+| Rule | Writer | Reader |
+|-|-|-|
+| Ordinary stat | skipped when Save Bits is 0 or `value >> ValShift` is 0 (tested **before** Save Add: with shift 4, values 1-15 vanish and -1 comes back as -16); sum written unsigned, capped at `2^Save Bits - 1`, so a negative sum becomes the maximum | `(field - Save Add) << ValShift` as int32; the only path that reads ValShift |
+| Refused | ValShift above 31; a parameter on a grouped leader; a parameter on a stat without Save Param Bits | ValShift above 31 |
+| Leader (17, 48, 50, 52, 54, 57) | written normally; then each follower's list value + Save Add, capped, **no shift**; a follower missing from the list is written as 0 | leader and followers come back `field - Save Add`, unshifted |
+| Follower already equal to its leader's value | not written a second time | |
+| Stats 0-3 | | unshifted, and read **without** a parameter |
+| Stat 326 | only its id is written | |
+| Parameter | | the narrow reader keeps 16 bits |
+| Leader 57 | | loading it also sets stat 326 to 1 |
+
+In vanilla tables the item stats with a ValShift are 7, 9, 11 (max life, mana, stamina) and 216, 217 (per-level);
+6, 8, 10 have ValShift 8 but no Save Bits, and the followers have none, so the asymmetries only show with edited
+tables. A save read and written back loses the low ValShift bits, exactly once. The character stat section `gf` is
+**not** shifted (writer core `0x3cb650` from `0x830030`, reader core `0x3cb920`). The network record (wide form)
+follows the same rules.
+
+A tool that re-encodes an item must also refuse a value whose shift wraps in 32 bits: the game keeps the wrapped
+value, but encoding it would not give the field back.
+
 ## Save copy vs network copy
 
 | | Save | Network |

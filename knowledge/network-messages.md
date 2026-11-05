@@ -34,6 +34,8 @@ Variable S->C length rules (observed unless marked):
 | `0x68`, `0x71` | monster walk / skill to a unit | 23 + 4 x `u8@21` (static only for `0x71`) |
 | `0x72` | skill with path to a unit | 22 + 4 x `u8@20` (static only) |
 | `0x73` | create missile | 21 + 67 x `u8@20` |
+| `0x3e` | item stat update | `u8@1` (2 + bit buffer, at most 32) |
+| `0x61` (C->S) | client share data, relayed as S->C `0x78` | 3 + `u8@2` (static only) |
 | `0x94` | all skills | 6 + 3 x `u8@1` |
 | `0x9c`, `0x9d` | item messages | `u8@2` (max 252) |
 | `0xa8` | state on with values | `u8@2` (1.14d had it at @6) |
@@ -84,7 +86,7 @@ Not every id; the ones a plugin change commonly touches or that show up first wh
 | id | size | meaning |
 |-|-|-|
 | `0x00`, `0x02`, `0x04` | 1 | game init done, act init done, start act |
-| `0x01` | 8 | new game: difficulty @1, **game edition @6** (1 Classic, 2 Expansion, 3 Garden = the Reign of the Warlock content) |
+| `0x01` | 8 | new game: difficulty @1, u32 game flags @2 (`game+0x5658` with bit `0x4` always set: 4 = softcore, non-ladder, normal), **game edition @6** (1 Classic, 2 Expansion, 3 Garden = the Reign of the Warlock content), ladder @7 (`game+0x108 != 0`). Builder `0x479290` |
 | `0x03` | 12 | new act: act, map seed, town level (u16), object seed |
 | `0x06` | 1 | end game |
 | `0x07` / `0x08` | 7 | add / remove room (x, y, u16 level) |
@@ -104,15 +106,19 @@ Not every id; the ones a plugin change commonly touches or that show up first wh
 | `0x2b` | 206 | correct path (only when client and server paths differ) |
 | `0x2c` | 8 | play sound |
 | `0x2d` | 5 | echo of the client loop counter `0x6f`; also sent before other messages when the counter moved |
+| `0x3e` | var | one item stat changed (repair, recharge, throw stack quantity); layout under "Stat and state messages" |
 | `0x42` | 6 | destroy hand (cursor) item |
 | `0x47` / `0x48` | 11 / 11 | item modifiers / requirements-met refresh; follow every request that ran the inventory refresh |
 | `0x4c`, `0x4d` | 20, 21 | skill on unit / at x/y |
 | `0x51` | 15 | new object |
 | `0x59` | 71 | new player unit (guid, class, name) |
 | `0x5a` | 34 | system message (no names: the client looks them up by guid) |
+| `0x5b`-`0x5c`, `0x75`, `0x7f`, `0x8b`-`0x8d`, `0x90` | | roster, relations, party (section "Party, roster and chat") |
+| `0x60` | 14 | town portal destination (below) |
 | `0x63` / `0x64` | 17 / 4 | waypoint bit record / waypoint visit (static only) |
 | `0x67`-`0x6d` | var / 10-16 | monster moves, attacks, death (`0x69` action 8, then 9), neutral |
 | `0x73`, `0x85`, `0x86` | var, 10, 5 | missile create, hit, remove |
+| `0x82` | 81 | town portal owner link (below) |
 | `0x8f` | 33 | heartbeat reply (all zero) |
 | `0x94` | var | all skills |
 | `0x95` / `0x96` | 23 / 11 | life+mana / stamina sync |
@@ -137,7 +143,7 @@ Server handler RVAs from the handler table `0x1d2a790` (build 93847).
 |-|-|-|-|
 | `0x01`-`0x04` | 210 / 214 | walk / run to a point / to a unit | `0x4ac050`, `0x4ace20`, `0x4ace40`, `0x4ace60` |
 | `0x05`-`0x12` | 5, 9 or path | left/right skill at x/y or on a unit (shift and hold variants) | `0x4ace80`-`0x4ad4f0` |
-| `0x13` | 9 | loot a player corpse | `0x4b2be0` |
+| `0x13` | 9 | loot a player corpse {u32 corpse guid, u32 owner guid} (section "Party, roster and chat") | `0x4b2be0` |
 | `0x15` | var | chat: 3 + message + whisper target + 9 | check for an existing loader hook before patching |
 | `0x16` | 17 | pick up from the ground | `0x4b9df0` |
 | `0x17` | 5 | drop the cursor item | `0x4bd8f0` |
@@ -153,16 +159,26 @@ Server handler RVAs from the handler table `0x1d2a790` (build 93847).
 | `0x38` | 9 | open NPC menu: 1 trade, 2 gamble, 3 hire | `0x4b0470` |
 | `0x3a` / `0x3b` | 5 | spend stat / skill point {u16 id, u16 count-1} | `0x4b3c70` / `0x4b3ee0` |
 | `0x3c` | 9 | select hand skill (never gated) | `0x4b4250` |
+| `0x3d` | 3 | voice line {u16 sound}; only sounds `0x1a`-`0x27`, relayed as `0x2c` to watchers | `0x4b5d80` |
 | `0x3f` | 1 | respawn (only while dead; hardcore refuses) | `0x4b6160` |
 | `0x40` | 5 | use a level exit (within 5) | `0x4adbb0` |
 | `0x41` | 13 | operate object (waypoints, chests, shrines) | `0x4b0f80` |
 | `0x4b` | 5 | travel to a waypoint {i32 level}, 10 s guard | `0x4b6f10` |
+| `0x4f` | 6 | party screen button {u8 action, u32 target} (section "Party, roster and chat") | `0x4b69a0` -> `0x5e3cb0` |
 | `0x50` | 30 | weapon swap with the client's view (below) | `0x4bea50` |
+| `0x51` | 17 | give the cursor item to the mercenary {i32 player item, i32 merc guid, i32 merc item, u32 body location 1-10} (static only) | `0x4c0e20` |
+| `0x61` | var | client share data: stored whole in the client record (`0x4865d0`) and relayed as S->C `0x78` (static only) | `0x4b60e0` |
 | `0x53`-`0x5f` | 21-98 | direct grid / body / belt / stash moves (new in D2R) | `0x4c70b0` ... `0x4bb600` |
 
 System messages (before and outside a game) go to `0x51a430` instead: `0x67` create game (401 bytes), `0x68` join
 (85), `0x69` leave (1), `0x6c` save upload chunk, `0x6d` heartbeat (13; answered with `0x8f`), `0x6f` client loop
-counter (5; echoed as `0x2d`), and `0x70`, which the network service posts itself when a connection is gone.
+counter (5; the u32 is kept at `client+0x690` and echoed as `0x2d`), and `0x70`, which the network service posts
+itself when a connection is gone. A queued message is `{u16 len, u32 clientId, payload[len]}` (`len` counts the
+payload only); the pops (`0x641230` system, `0x641160` game) hand the handler `{u32 clientId, packet[len]}`.
+
+`0x51` (give to mercenary) replies in this order (static only): `0x42` when an item is given, `0x9d` action 8 (the
+merc's item off), `0x9d` action 6 (the given item on, owner type 1), `0x9c` action `0x11` (the merc's old item onto
+the cursor). Body locations 11/12 (the swap slots) cannot be addressed by it.
 
 ## Where the server handles them (hook points, build 93847)
 
@@ -213,7 +229,9 @@ Observed on a TCP/IP join to a hosted game (times from the TCP connect):
 3. **S->C** `0x01` new game, `0x00`, `0x02`, `0x8f` (heartbeat reply). Join accepted.
 4. **Next server frame** after the upload ended: the load burst (about 190 messages):
    - `0x59` the player, `0xa8` states on the player, `0x94` all skills;
-   - the shared stash tabs, each as its own player-like unit (`0x59`, stats, states, `0x83` stash link);
+   - the shared stash tabs, each as its own player-like unit (`0x59`, stats, states, `0x83` stash link); six on a
+     fresh character, the count coming from `0x388c70` (3, plus configured extra tabs, plus 2 in a Garden game;
+     medium for the last terms);
    - skill state `0x22`, `0x21`, `0x23`;
    - quest records `0x5e`, `0x28`, `0x29`;
    - `0x0b` (you control this unit), `0x5f` portal flags;
@@ -234,6 +252,44 @@ player's stash-tab units, `0x23`, `0x06` end game; then the host closes the conn
 
 A plugin that builds per-player state should key it on the player unit after `0x04` (state 4); before that the
 player may not exist yet. There is no engine "player joined" callback a plugin gets for free.
+
+## Creating and joining a game (system messages)
+
+C->S `0x67` create game, 401 bytes, handled in `0x51a430` (static, offsets confirmed). Platform and session fields
+are left out here.
+
+| What | Value (build 93847) | Confidence |
+|-|-|-|
+| @1 level difference | 0..`0x61`, or `0xff` = none; stored at `game+0x103` | high |
+| @2 max players | 1..8; stored at `game+0x105` | high |
+| @3 u32 flags | allowed mask `0xe23800`: `0x800` hardcore, `0x1000` nightmare, `0x2000` hell (not both), `0x200000` ladder, `0x400000` item spacing (`game+0x124`), `0x800000` respec (only when a host setting allows it) | high |
+| @7 version | 1 Classic, 2 Expansion, 3 Garden; 0 is refused. Expansion is this byte, not a flag | high |
+| @16 host game type | must be < 4; stored at `game+0x101` | high |
+| @25 terror zones enabled | stored at `game+0x120` | medium |
+| @26 / @87 / @148 | name [61], password [61], description [125], each NUL-terminated (checked before anything else) | high |
+| Name / description checks | `0x46b4b0` / `0x46b2b0` (whether an empty name passes is open) | static only |
+| Game ids | counter 1..`0x400`, wraps to 1, skips ids in use; a full table fails the create | high |
+
+Join (`0x68`) refusals, in order: the game is closing (`game+0x1a5d8`; a second field `game+0x1a5dc` also refuses),
+full (8 players or the game's max), then the password, compared case-insensitively (`0x46b6a0` with the Unicode
+case folder `0x468790`). Game names are not checked for uniqueness by the engine.
+
+When the uploaded save is read (`0x531e70`, character checks `0x535400` on the header flags at save offset `0x14`),
+the refusal codes are (static only):
+
+| Code | Refusal |
+|-|-|
+| `0x19` / `0x1a` | ladder mismatch: a current-season ladder character in a non-ladder game, or a non-ladder / other-season character in a ladder game; a season later than the server's (save byte `0xf7` against `0x92a10`, medium) |
+| `0x20`, 9, `0x1f`, `0x21` | character version differs from the game's (version 2 with flag `0x20`, else 1; save byte `0xf8` overrides when 1..3; class 7 needs 3) |
+| 8 / `0x22` | class above 4 in Classic, above 6 in Expansion |
+| `0xb` / `0xc` | hardcore character in softcore / softcore character in hardcore |
+| 10 | dead hardcore character |
+| `0xe` / `0xd` | hell with fewer than 10 acts done (8 Classic) / nightmare with fewer than 5 (4 Classic); acts done = flag bits 8-12 |
+| `0x1c` | character flag `0x80` (meaning unknown) |
+| level difference | creator level and level difference both set and the gap too big; a new character (flag 1) counts as level 1 |
+
+A past-season ladder character joining a non-ladder game has its ladder flag cleared. `0x531e70` also runs the
+name check `0x46c000`.
 
 ## Flows that help when reading a capture
 
@@ -334,6 +390,126 @@ queued and leave after the request's other messages.
 - A plugin that moves weapons itself (or changes what slots 4/5/11/12 hold) must keep the client's view in step, or
   the next `0x50` is silently refused and the W key "does nothing".
 
+## Stat and state messages
+
+Fixed layouts (static, consistent with the town captures). Unit-level background is in [units-stats.md](units-stats.md).
+
+| id | size | layout |
+|-|-|-|
+| `0x1d` | 6 | u8 value @1, u16 stat @2, u16 layer @4 |
+| `0x1e` | 7 | u16 stat @1, u16 value @3, u16 layer @5 |
+| `0x1f` | 9 | u16 stat @1, u16 layer @3, u32 value @5 |
+| `0x20` | 13 | u16 stat @1, u16 layer @3, u32 guid @5, u32 value @9 (another unit's stat; also used for the stash-tab units) |
+| `0x19` / `0x1a` / `0x1b` / `0x1c` | 2 / 2 / 3 / 5 | gold gain u8 (1..254) / experience gain u8 / gain u16 / absolute experience u32 (any loss too) |
+| `0x95` | 23 | u32 life @1, u32 mana @5, u32 stamina @9, u16 x @13, u16 y @15, 6 zero bytes; whole points (the 8.8 value `>> 8`); position medium |
+| `0xa7` / `0xa9` | 8 | u8 unit type @1, u16 state @2, u32 guid @4 (state on without values / off; builders `0x4801b0` / `0x4800a0`) |
+| `0x0a` | 6 | u8 unit type @1, u32 guid @2 |
+
+- **Width of `0x1d`-`0x1f`** follows the value read as unsigned: below `0xff` a byte, below `0xffff` a word, else a
+  dword, so a negative value always goes as `0x1f`. Values are in ValShift units (`maxhp` 40 is sent as `0x2800`).
+- **`0xa8`** (state on with values): u8 unit type @1, u8 size @2, u16 state @3, u32 guid @5, then a bit stream (LSB
+  first) from @9: per stat with `Send Bits > 0`, a 16-bit stat id, the layer in `Send Param Bits` bits, the value in
+  `Send Bits` bits; ended by a 16-bit `0xffff` and padded to a byte. Size at most `0xfe`, stream buffer 244 bytes. The
+  sender copies up to 16 base stats of the state's list (`0x2f64e0`); no list or no stats gives `0xa7` instead. A list
+  whose stats all lack Send Bits gives `0xa8` with only the end mark (seen for `sharedstash` / `advancedstash`).
+- **Value clamp**: unsigned stats to `[0, 2^n - 1]`; signed to the signed n-bit range, low n bits written; 32 bits and
+  up are written as is.
+- **`0xaa`** (all states): u8 unit type @1, u32 guid @2, u8 size @6, stream from @7: per set, sendable state a 9-bit
+  state id and one bit "has sendable stats" (if set, the stats as in `0xa8` and `0xffff`); ended by `0x1ff` (9 bits).
+  Size at most `0xf3`. A state whose estimated cost (19 bits, plus 16 + param + send bits per stat, plus 16 when there
+  is any) would pass `0xf3` closes the message and starts a new one. A unit with no states still gets one message,
+  `{0xaa, type, guid, 9, 0xff, 0x01}`. State 511 cannot be sent (the end mark).
+- **Changed states** are sent from the lowest state id up, skipping `nosend` states (states record `+0x10` bit 0).
+  Vanilla senders: changed `0x53a210`, all `0x539890` (bodies from `+6`; a loader may replace them).
+- **`0x3e`** (item stat update): u8 length @1 (2 + bit bytes, the writer fails above 32), bits LSB first: guid with
+  two size bits (8/16/32 bits for values below `0x100` / `0x10000` / larger), a 1-bit flag, a 16-bit stat id, the value
+  sized like the guid, a 32-bit layer. Classic had a 9-bit id and a small layer. Built through `0x43eb30` (a thunk
+  through slot `0x3e2a1c0` into the loader core); users are the repair `0x53bb50` (throw stack quantity stat `0x46`,
+  each recharged stat `0xcc`, durability `0x48`) and the broken-item repair `0x46e7a0`. Medium.
+- Bit writer: init `0xa1b620`, write `0xa1b710`, bytes used `0xa1b610`.
+
+## Party, roster and chat
+
+Static reading of the server functions (no multiplayer capture); classic code as the guide where D2R calls into the
+loader core.
+
+| id | dir | size | layout | builder / handler |
+|-|-|-|-|-|
+| `0x5a` | S->C | 34 | u8 type @1, u8 color @2, u32 param1 @3, u8 param2 @7, u32 param3 @8 (a unit guid in a u64 slot), zeros | `0x5e3fa0` (type 7), `0x5282b0` |
+| `0x5b` | S->C | 97 | u16 size @1, u64 guid @3, u32 guid @11, class @15, name [61] @16, u16 level @77, u16 party @79, ... | `0x47c370` from `0x408ea0` |
+| `0x5c` | S->C | 5 | u32 guid: client left | |
+| `0x75` | S->C | 13 | u32 about, u16 party, u16 level, u16 relation flags, u16 relation state | `0x481660` |
+| `0x7f` | S->C | 10 | u8 1, u16 life percent @2, u32 guid @4, u16 level id @8 (party member life) | `0x480ad0` |
+| `0x8b` | S->C | 6 | u32 about, u8 relation state | `0x507cf0` |
+| `0x8c` | S->C | 11 | u32 a, u32 b, u16 relation flags of a about b | `0x507e50` / `0x507c30` |
+| `0x8d` | S->C | 7 | u32 guid, u16 party (`0xffff` none) | `0x47de90`, broadcast `0x477060` |
+| `0x90` | S->C | 13 | u32 guid, u32 x, u32 y (party member position) | `0x4818f0` |
+| `0x26` | S->C | var | type, language, unit type, u32 guid, color, sub type, speaker (<= 60), text (<= 255) | `0x477a30`; overhead `0x538980` |
+| `0x15` | C->S | 14-284 | type, language, text, target name, then 9 tail bytes (kind, u32 x, u32 y) | loader core |
+
+`0x5a` types: 2 player joined, 3 player left, 4 whisper target not in the game, 7 party screen event (param1 = the
+other player, param2 = code), `0xd` whisper refused, `0x10` "please wait" after an early hostile declaration (param3
+= the declarer). Type 7 codes: 1/2 loot allowed (the female wording for classes 0, 1, 6), 3 hostile, 4 no longer
+hostile, 5 invited, 6 invite cancelled, 7 joined party, 8 now allied, 9 left party, 10/11 loot withdrawn.
+
+**`0x4f` actions** (bits 0-6; bit 7 = on/off for 0-3, must be 0 for 4-7; above 7 refused). Classic numbered them
+1..9 with separate on/off ids.
+
+| action | meaning | function |
+|-|-|-|
+| 0 | loot (hardcore only) | `0x5e3490` |
+| 1 / 2 | ignore / squelch (relation mask 2 / 4) | toggle `0x5e4100` |
+| 3 | hostile | `0x5e39a0` |
+| 4 / 5 / 6 | invite / cancel / accept | `0x5e3860` / `0x5e3750` / `0x5e35e0` |
+| 7 | leave party (target must be self) | `0x5e3940` -> `0x5070b0` |
+
+Checks before the dispatch: size 6, the gate, the target is a player-type unit, self only for action 7, corpses and
+stash-tab units refused. The relation records and party rules behind these are in [units-stats.md](units-stats.md).
+
+- **Toggle quirk**: the toggle compares `flags & mask` with 0/1, so a set ignore/squelch/hostile bit requested on
+  again counts as a change and is broadcast again. Every toggle sends `0x75` both ways; a real change broadcasts `0x8c`
+  to every player. With 8 players one 6-byte `0x4f` can become 10 messages; the engine does not throttle `0x4f`.
+- **Join** (`0x408ea0`, then `0x507fd0`): `0x5b` about each other player to the joiner and about the joiner to them,
+  `0x5b` about the joiner to itself; per player both relation records, `0x8d`, `0x8b` both ways and one `0x8c` per
+  record; then `0x5a` type 2 to everyone. **Leave**: `0x5c` to the others, leave the party, drop the records, `0x5a`
+  type 3.
+- **Chat** (classic routing with D2R's `0x26`): say goes to everyone including the sender, except where the receiver
+  squelched the speaker or the speaker ignores the receiver. A whisper (name length 1-15, case-insensitive match)
+  goes as type 2 to the target and type 6 to the sender; unknown name -> `0x5a` type 4, blocked -> type `0xd`.
+  Overhead text is `0x26` type 5 with an empty speaker; `0x76` ends it. Whether D2R rate-limits chat is open.
+- **Party sync** (`0x5073d0`), every 30 frames per player for each other member: `0x7f` when the area changed, the
+  life percent moved by more than 8, or small moves added up past 6 (cache per pair at `client+0xe8`); `0x90` when the
+  member is at least `0x33` away.
+- **Corpse loot `0x13`**: @1 is the corpse (a player-type unit in state 7), @5 the player whose items it holds (must
+  equal `0x388ba0` of the corpse's inventory). Cursor empty; more than 50 away is telemetry, more than 8 away or
+  blocked by collision mask `0x804` is dropped silently. Another player's corpse needs a hardcore game and the owner's
+  loot flag.
+
+## Town portals
+
+Captured (18 portals).
+
+| `0x60`, 14 bytes | `0x82`, 81 bytes |
+|-|-|
+| @1 u8 portal state (`0x34adf0`: 0 the field end, 3 the town end) | @1 u32 owner guid |
+| @2 u16 destination level | @5 owner name [61], NUL padded |
+| @4 u32 portal guid | @66 u32 portal guid |
+| @8 u16 / @10 u16 linked portal x / y | @70 u32 linked portal guid |
+| @12 u16 destination level again | @74 u16 destination level, @76 / @78 u16 linked x / y, @80 u8 flag (always 0) |
+
+Order: the portal object's `0x51`, then `0x60`, then `0x82`. The `0x60` builder `0x47f620` jumps into the loader core
+mid-function; the `0x82` builder `0x47a450` has no direct callers in the exe. Classic `0x60` was 7 bytes and `0x82`
+29.
+
+## Traffic volume (for rate limits and capture tools)
+
+| What | Value (build 93847) | Confidence |
+|-|-|-|
+| Join upload, level-1 character | about 19 messages and 3.5 KB in one burst: `0x68`, `0x6d`, 13 `0x6c` chunks (a 1114-byte `.d2s` and seven shared-stash sections) | observed |
+| Largest legitimate upload | `.d2s` at most 16 KiB (the save buffer), 65 chunks; each stash section bounded by the 32 KiB item scratch buffer (assumed), 129 chunks; about 975 messages and 244 KiB in all | medium |
+| Walking or running to a unit | one `0x01`-`0x04` (210/214 bytes) every 40 ms frame, about 25 messages and 5.4 KB a second | observed |
+| Busy client steady rate | well under 50 messages and 12 KB a second; heartbeat every 5 s | observed |
+
 ## What to expect when debugging a plugin
 
 - **"Nothing happens" on an action** usually means the server refused it: item moves, stat/skill points and swaps
@@ -354,5 +530,5 @@ queued and leave after the request's other messages.
 - **Do not imitate 1.13c/1.14d layouts** for anything above `0x36` C->S or for the item and stat messages.
 
 Open questions (not captured): NPC dialog and shop messages (`0x2f`, `0x27`, `0x28`, `0x31`, `0x38`, `0x32`,
-`0x33`, `0x2a`), waypoint menu and travel (`0x41`, `0x64`, `0x63`, `0x4b`), town portal (`0x60`, `0x82`: the builder
-writes 80 bytes but the client table says 81), party and trade with two players.
+`0x33`, `0x2a`), waypoint menu and travel (`0x41`, `0x64`, `0x63`, `0x4b`), party (static only, above) and trade
+with two players, the loader-core chat handler (`0x15`).

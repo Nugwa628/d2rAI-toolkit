@@ -20,13 +20,28 @@ Ghidra notes. "Hooked" = installed with the entry bytes shown and ran in game; "
 | game +0x104 | u8 difficulty (0 normal, 1 nightmare, 2 hell) |
 | game +0x106 | u8 dataFlag passed to data-table getters |
 | game +0x1aac8 | per-game counter map (used by the cube Red Portal; accessor `0x5d88b0`) |
+| game +0x101 | u8 host game type (create packet @16, must be < 4) |
+| game +0x103 | u8 level difference (`0xff` = none) |
+| game +0x108 | ladder (nonzero = ladder game; sent at `0x01` @7) |
+| game +0x120 | terror zones enabled (create packet @25) |
+| game +0x124 | item spacing flag (`0x400000`) |
+| game +0x144 + type*4 | per-type unit id counters (zeroed at create) |
+| game +0x3630 | tile (type 5) unit list |
+| game +0x57e8 | "empty since" timer of the 300 s idle sweep |
+| game +0x5800 | 30 s periodic save timer (`0x41e0d0`); `0x406e10` (hardcore game over) also writes it: shared or misread, verify |
+| game +0x5820 | terror-zone level list (`0x489b70`) |
+| game +0x1a5d8 / +0x1a5dc | closing; second join-refusing field (setter unknown) |
+| game +0x1aa48 | event-modifier vector (create argument) |
 
 ## Units
 
 | Offset | Meaning |
 |---|---|
 | unit +0x00 | i32 type: 0 player, 1 monster, 2 object, 3 missile, 4 item, 5 tile |
-| unit +0x08 | class id (row in monstats / items / missiles / objects; `0x34a330` returns it) |
+| unit +0x04 | class (row) as stored by the allocator `0x4905a0` |
+| unit +0x08 | read by `0x34a330`; used as the class id by a plugin, but the allocator's layout makes it the unit id (guid). **Conflict: verify before relying on either** |
+| unit +0x30 | init seed (low word drawn from the game seed) |
+| unit +0xc0, +0xc4 | zeroed at allocation; probably owner type / owner id |
 | unit +0x10 | type-specific data (missile data, object data, item data) |
 | unit +0x28 | seed {u32 lo, u32 hi}; RNG step `lo' = lo*0x6ac690c5 + hi`, `hi'` = carry (inlined everywhere) |
 | unit +0x38 | path: dynamic (players, monsters, missiles) x u16 +0x02, y u16 +0x06; static (objects, items, tiles) x i32 +0x10, y i32 +0x14 |
@@ -97,6 +112,89 @@ game-wide quest list, `game+0x2230` player hash (128 buckets, next at unit `+0x1
 Pools: plain stat lists `0x2a9a430` (element 0x90); extended stat lists `0x2a9a4d0` (element **0x2b00**, 0x200 per
 chunk; static constructor `0x3eb60`; pool +8 element size, +0x18/+0x28 chunk lists; chunk creation `0x1230260`);
 create `0x2f65d0` (zero-fills 0x2b00), release `0x2f9eb0`. Extended list +0x2af0/+0x2af8: creation args.
+
+| RVA | Meaning (static reading; [units-stats.md](units-stats.md)) |
+|-|-|
+| `0x2f9db0` | stat store |
+| `0x2fa200` | propagate a change up the parent lists |
+| `0x2f9bb0` | record a changed key for the next send (skips 6, 8, 10, 13, 14 and non-`Saved` stats) |
+| `0x2f9b10` | fMin clamp (`MinAccr`) |
+| `0x2f64e0` | copy up to 16 base stats of a list (state senders) |
+| `0x2f40d0` | stat-list free called first by the unit free `0x349250` (likely the extended list) |
+| `0x3352b0` | asserts at most 16 state blocks |
+
+## Unit allocation, lists and seeds
+
+| RVA | Meaning (static reading; [units-stats.md](units-stats.md)) |
+|-|-|
+| `0x4905a0` | unit allocator (parameter block: type, class, x, y, room, flags, guid) |
+| `0x490410` | allocator wrapper used by the player-type creators |
+| `0x48ee10` | link a unit into the game lists |
+| `0x4925b0` | (type, game, id) -> hash chain (`id & 0x7f`) |
+| `0x48faa0` | remove and free a unit at once |
+| `0x349250` | free the unit memory |
+| `0x48fd20` | last attacker (kept with extended flag `0x20000`) |
+| `0x34e500` | set unit flag `0x10` (init seed set) |
+| `0x34f2c0` | give the unit list node 11 |
+| `0x490b00` | unit InitSeed from the game seed (players and player-type bodies) |
+| `0x41ff50`, `0x531180` | create the player unit (new / from save); callers `0x420070`, `0x420c50`, `0x5355b0`, `0x531e70`, `0x532630` |
+| `0x4911a0` / `0x34eba0` / `0x34e5f0` | client into player data / set name / anim mode |
+| `0x41fb20`, `0x531af0` | corpse units read from the save |
+| `0x52f8d0` | one player-type body per shared-stash tab (from `0x52fdb0`, `0x530590`) |
+| `0x388c70` | shared-stash tab count |
+| `0x42c110` | dead body unit (mode `0x11`, state `0xba`) |
+| `0x48cdb0` case 0 -> `0x4252c0` | player per-type setup (mode, path, inventory, stats, skills) |
+| `0x487d20` | act change (does not reseed players) |
+| `0x5098b0`, `0x5125a0`, `0x502780`, `0x513ee0` | the four game-seed draws at game create |
+| `0x490d00` | player iteration (skips corpses and stash-tab bodies) |
+
+## Party, roster and chat (server)
+
+| RVA | Meaning (static reading; [network-messages.md](network-messages.md)) |
+|-|-|
+| `0x4b69a0` -> `0x5e3cb0` | C->S `0x4f` handler and action dispatch |
+| `0x5e3490` / `0x5e4100` / `0x5e39a0` | loot / ignore-squelch toggle / hostile |
+| `0x5e3860` / `0x5e3750` / `0x5e35e0` / `0x5e3940` | invite / cancel / accept / leave |
+| `0x5e3d20` | update relation state with a player |
+| `0x5e3fa0` | `0x5a` type 7 party event (code -> color) |
+| `0x5282b0` | `0x5a` builder |
+| `0x5077c0` / `0x5078e0` | new relation record / reset pending invites |
+| `0x506980` / `0x506b30` / `0x5070b0` | add member / new party / leave party |
+| `0x507fd0` | initialise relations at join |
+| `0x5073d0` | party life and position sync (every 30 frames) |
+| `0x5074b0` | party gold share |
+| `0x4251e0` | player count |
+| `0x509430` | terror-zone level player count |
+| `0x489b70` | terror-zone list of a game |
+| `0x3af200` | test state `0xbd` (terror zone) |
+| `0x324fc0` | unit distance with sizes |
+| `0x424c20` | remove a player's town portal |
+| `0x4b5d80` | C->S `0x3d` voice line |
+| `0x477a30` / `0x538980` | S->C `0x26` chat / overhead text |
+| `0x47c370`, `0x481660`, `0x480ad0`, `0x507cf0`, `0x507e50`, `0x507c30`, `0x47de90`, `0x477060`, `0x4818f0` | builders of `0x5b`, `0x75`, `0x7f`, `0x8b`, `0x8c` (two), `0x8d`, `0x8d` broadcast, `0x90` |
+
+## Game create, join and message plumbing
+
+| RVA | Meaning |
+|-|-|
+| `0x479290` | S->C `0x01` new game builder |
+| `0x46b4b0` / `0x46b2b0` | game name / description check |
+| `0x46b6a0` / `0x468790` | game password check / Unicode case fold |
+| `0x535400` | character join checks on the save header (refusal codes in [network-messages.md](network-messages.md)) |
+| `0x46c000` | character name check on the save path |
+| `0x41e0d0` | periodic save (30 s timer `game+0x5800`) |
+| `0x408ab0` | per-client output step run by the idle sweep |
+| `0x641230` / `0x641160` | pop a system / game message from the network queue |
+| `0x4865d0` | store C->S `0x61` share data in the client |
+| `0x4c0e20` | C->S `0x51` give item to mercenary |
+| `0x4801b0` / `0x4800a0` | S->C `0xa7` / `0xa9` builders |
+| `0x43eb30` | set an item stat and send `0x3e` (thunk through slot `0x3e2a1c0` into the loader core) |
+| `0x53bb50` / `0x46e7a0` | repair / broken-item repair (send `0x3e`) |
+| `0x47f620` / `0x47a450` | S->C `0x60` / `0x82` town portal builders |
+| `0xa1b620` / `0xa1b710` / `0xa1b610` | bit writer init / write / bytes used |
+
+Client record fields: `client+0x2bc` counter used by the vitals sender, `client+0x690` last `0x6f` loop value,
+`client+0xe8` party life cache.
 
 ## States
 
@@ -544,7 +642,7 @@ Static reading unless marked; matches the classic 1.13c functions in structure.
 | `0x42c110` | (game, player, x, y, room) corpse creator: moves equipped items onto the corpse, drops gold |
 | `0x424ac0` | (game, victim, killer) death penalty: gold penalty `0x425cb0`, then (level > 1, killer a monster or foreign player) experience loss `(exp[L] - exp[L-1]) * pct / 100`, never below `exp[L-1]`. Entry has a rip-relative call at +0x11 |
 | `0x4b6160` | packet 0x41 respawn: needs mode 0x11; restores life / mana / stamina, moves to the act town, clears state 0x36. Hardcore branch refuses |
-| `0x485350` | level entry: re-creates the player's stored corpses in the room (each entry and respawn) |
+| `0x485350` | level entry: moves the joining player's corpses next to the act's town start (join only; other callers are debug commands; see [monster-ai.md](monster-ai.md)) |
 | `0x42b220` | corpse pickup (interact handler `0x4b2be0`); removal sequence `0x389730`, `0x2ef4d0`, `0x476fc0` (packet 0x8e), `0x48faa0` |
 
 ## Player actions and skills (server)
