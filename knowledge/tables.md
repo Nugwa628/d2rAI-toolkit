@@ -110,6 +110,27 @@ Semantics worth knowing (build 93847, read from the code):
   494 496 511 539.
 - levels.txt has **no town column**: the five vanilla towns are hard-coded.
 
+How the classic txt loader turns cells into fields (1.14d `0x6bd780`, static reading; D2R's binary tables were not
+checked the same way, so treat these as the classic baseline):
+
+- A number is stored in the field's width keeping its low bits: no clamp and no error. A one-byte field given 256 reads
+  0, given 200 reads 200.
+- Yes/no columns (monstats `npc`, `inTown`, `interact`, `critter`, the monstats2 mode bits) are bit fields: any nonzero
+  number is true.
+- One-byte unsigned fields: monstats `aidel`, `aidel(N)`, `aidel(H)` and `Align`; objects `InitFn` and `Mode0`-`Mode7`
+  (any nonzero Mode byte marks the mode).
+- monstats `Align` is read as one byte and each reader tests one value: monster creation gives 1 the good-alignment
+  stat, 2 the neutral one, any other byte none; a level-scaling step tests for 0, which 3 is not.
+- monstats2 `SizeX` is read as a **signed** byte (`0x620510`), so 128-255 is a negative size, with these effects:
+  - melee range: 8 or more subtiles from a target of size 0-3 on either axis, the monster counts as in melee range at
+    any distance, because the far path of GetDistanceBetweenUnits (`0x641672`) wraps; closer in, the near table
+    counts it as a small unit;
+  - AI_GetWeightedDistanceToPoint (`0x5dc480`) returns 0 for every point;
+  - Blood Raven's leash (`0x5e641d`-`0x5e648e`): the target's distance from home still works, but both checks of her
+    own distance always see 0, so the "over 50 from home, go back" check (`0x5e6430`) never fires and the "run until
+    within 5" check (`0x5e648b`) always passes.
+  Keep monstats2 `SizeX` at 0-127.
+
 ## Per-table cheat sheet for overhaul work
 
 | Table | Key / ID | What to watch |
@@ -156,7 +177,7 @@ Static reading; how the values are used is in [units-stats.md](units-stats.md) a
 | `op base`, `op stat1-3`, `maxstat`, states `stat` | hold stat **names**, resolved at load | high |
 | `*ID` comment columns | can disagree with the row index; the row index is the id | high |
 | charstats | 8 class rows after dropping `Expansion` (7 = Warlock); per-point values in quarter points | high |
-| hireling names | the first mercenary name string (`merc01`) is id 3411 in 93847 | medium |
+| hireling names | hireling `NameFirst` / `NameLast` are string keys; the mercenary names live in `data/local/lng/strings/mercenaries.json`, an array of entries with `id` and `Key` (plus the texts), so a key resolves to its entry's `id`. The first (`merc01`) is id 3411 in 93847 | medium |
 
 **`expfield.d2`** (loader `0x3e3150`, walk `0x3e33b0`; high for the layout): a version word, then
 the width and the height as dwords. The x centre comes from the first size word and the y centre from the second;

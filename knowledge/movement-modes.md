@@ -75,6 +75,10 @@ A subtile no loaded room holds answers with the asked bits of `0x27` (the four t
 - Objects mark a `SizeX` x `SizeY` box; other units a box of their size. A box of size `s` starts at `centre - s/2`
   (unsigned halving).
 - Dead units keep their mark; on death the game swaps in a 3x3 box of `0x8000` (corpse).
+- Classic 1.14d (1.14d addresses): a player's footprint stays on its dynamic path and moves with every step, the
+  walk included; a knockback's end (`0x581020`) leaves it in place. A unit leaving its room lifts its own footprint
+  (UNITS_UnlinkUnitFromRoom `0x5555cc` -> PATH_RemoveCollision `0x649f50`). A leap lifts it for the flight
+  (collision type 0, pattern 0) and lays it again at the landing ([skills-missiles.md](skills-missiles.md#61-slots-read-in-classic-114d)).
 
 ### 2.4 Room lookups and checks
 
@@ -184,6 +188,10 @@ only players have one.
 - **Analog moves** (static only): when a player moves by direction (path type `0x11`, set by the player walk/run start
   `0x429860` via `0x342750`), the percent is first multiplied by the magnitude at path `+0x234`. Nothing else writes
   that field.
+- **Classic monster path set-up** (1.14d MonsterMode.cpp, **unverified** in D2R): type TowardFinish unless the AI
+  gives a one-shot type; distance 5 when unset; the AI's velocity is a temporary stat (MONSTER_SetVelocityPercent): a
+  new one replaces it, a walk with none keeps it, any mode change removes it (UNITS_ChangeAnimMode); it counts in the
+  walk's speed, its animation and the 0x67 word.
 - Monster velocity percent: 75 walking; the hostile AIs' velocity call (`0x4a7270`) adds +100 for most (175 seen),
   +50 for others, champion/unique mods more. Read the stat total, never hard-code 175.
 - Seen in game: Act I monsters with `Velocity` 4 and 5 move at 768/960 walking and 1792/2240 running; a Barbarian
@@ -221,7 +229,13 @@ only players have one.
 - Players: WL, RN, TW and KB run on a recurring ModeChange event (the path steps each frame; running drains stamina;
   no stamina turns a run into a walk); A1, A2, SC, TH, KK, S1-S4 and SQ execute the used skill on animation flags 1
   and 2 (only while unit flag `0x40`, "server function not yet run", is clear). EndAnim: death becomes dead with the
-  corpse, knockback becomes get-hit, the rest neutral.
+  corpse, knockback becomes get-hit, the rest neutral. A skill mode's EndAnim also clears the used skill (1.14d
+  PLRMODE_EndAnimation `0x581020`).
+- **Moving skills** (1.14d PLRMODE_UpdateSkill `0x580460`; 1.14d address): while the used skill entry has run flag 1
+  (Whirlwind, Charge, a leap) every mode-change event of the skill mode steps the path once (SUNIT_UpdateUnitPath with
+  one frame of movement, `D2Common_10226(unit, 1024)`); when the step reports the end (2) run flag 2 goes on, and the
+  skill's do runs whatever the event's flag. Monster attack modes and SQ do the same. Per-skill contracts in
+  [skills-missiles.md](skills-missiles.md#61-slots-read-in-classic-114d).
 - Monsters (policy record read by `0x448400`, "while moving" check `0x448950`): WL, KB, SQ, RN recurring; DT, NU, GH,
   BL, DD the flagged frames; A1, A2, SC, S1-S4 the flagged frames unless monstats2 allows the mode while moving. NU,
   S3, S4 and DD schedule nothing after the start.
@@ -295,12 +309,52 @@ Sorceress 1 bare-handed, 2 with 1HS/1HT/STF/2HS/2HT, everyone else 0.
   (`0x351970` -> `0x3cb6c0`) is the last non-zero event of the rows passed, none on a wrap, so a slowed monster fires
   each event row once. It leaves SQ the frame after the step that uses the count up (end test `0x3476b0`). Speed: the
   "other" rate of the token's record, 256 without one.
+- **Player sequences** are not in monseq.txt (1.14d, addresses 1.14d's): D2Common's table at `0x7483b8` has 24
+  entries by skills.txt seqnum, each with a row list per weapon class in the order of `0x748418` (HTH 1HT 2HT 1HS 2HS
+  BOW XBW STF 1JS 1JT 1SS 1ST HT1 HT2); `0x663310` picks the list for the used skill and the weapon in hand. A class
+  with no rows (Charge with a bow, Whirlwind with a crossbow) has no sequence and plays the mode's animdata record.
+  Each row's mode is a player mode. D2R's Warlock Cleave and Mirrored Blades use seqnums 24 and 25, past 1.14d's table.
+- A player's SQ (and KB) takes its animdata record from the GH token (`0x745900`'s table): animdata has no player SQ
+  records, so the speed is the get-hit record's.
+- **Monster SQ** (`0x663310` via GetSequenceId `0x643d00`): the monseq sequence of the first monstats Skill1..8 slot
+  that holds the used skill (that slot's Sk<n>mode names it); none for DiabPrison (skill 199). animdata has no
+  monster SQ records either, so a missing sequence runs the default record (2048 frames).
+- **SQ rate** (UpdateAnimSpeed `0x623f50`): seqtrans SC takes the cast rate; otherwise UNITS_CheckAnimateAtFrameEnd
+  (`0x621580`) says yes when the current skill has skills.txt UseAttackRate (flags bit 19), giving the attack rate (less
+  30 for a player SQ), else `other_animrate`. Vanilla Whirlwind, Charge and Leap Attack have no UseAttackRate (their SQ
+  runs at other rate 100, the record's own speed); Jab, Double Swing, Frenzy and the assassin charge-ups have it.
 
 ### 7.4 animdata.d2
 
 256 buckets, each a u32 count then 160-byte records `{char name[8]; u32 frames; u32 speed; u8 flags[144]}`; a name's
 bucket is the sum of its upper-cased bytes `& 0xff`. A missing token gets the default record (2048 frames, speed 256;
 see [monsters-spawn.md](monsters-spawn.md) "Modes").
+
+### 7.5 Skill loops and the rewind (1.14d)
+
+Read in classic 1.14d (addresses 1.14d's); D2R's rewind `0x4914e0` was not compared, in particular whether it adds
+the extra EndAnim frame of a player sequence that `0x491240` adds.
+
+- **Rewind** (SKILLS_RewindSkillEx `0x553dc0`, with UNITS_SetupAnimTimerEventsFromFrame): deletes the unit's
+  ModeChange and EndAnim timers and stores `(game frame - frame) << 8` as the animation start (+0x44, which
+  `0x5539b0` normally sets to the game frame). Speed 0: EndAnim at now + 1 and nothing else (speeds are never
+  negative, `0x623f50` clamps at 0). Otherwise steps start at `(frame << 8) + speed` and run while below the frame
+  count; indexes `frame - 1` up to each step's position get a ModeChange (flags 1-4, param 0) one frame after the
+  step; EndAnim one frame after the last step, now + 2 when no step ran. Index `frame - 1` at frame 0 reads the byte
+  before the flags (the top byte of the speed, 0 in practice).
+- In a sequence it uses the sequence's own speed (+0x3c, set by `0x623f50`), count (+0x34, rows << 8 from
+  `0x621260`) and row events (`0x6634c0`).
+- Callers: Charge (srvdo 67) passes 0, its hit frame or that + 1; Whirlwind 3; the leap landing (`0x5da120`) 10; Leap
+  Attack (srvdo 78) 16. Whirlwind rewinds to 3 from row 3's event, so row 3 comes back the next frame at any speed:
+  event, path step and do run every game frame while the spin lasts. At the path end the do ends without a rewind
+  and the last rewind's events play out (row 7, EndAnim, neutral).
+- A monster's spin restarts its sequence instead (`0x5d965b`): SetSequenceFrame(unit, 0) then frame count = 0x400.
+  1.14d's +0x48 is nFrameCount (D2R +0x64): in a sequence the count still to go, lowered by the speed each step
+  (`0x623e00`). SetSequenceFrame (`0x6212c0`) writes only the sequence frame, so the fraction is kept and a plain
+  animation keeps its frame.
+- **Event moves**: EVENT_RemoveUnitTimersByType then SetEvent replaces a unit's timers of one type with one at a given
+  frame (Charge moves its mode change to the next frame; Leap Attack's landing its end). A leaping monster's frame
+  count moves by whole frames (`0x5da120`: += / -= 0x100).
 
 ## 8. The event queue
 

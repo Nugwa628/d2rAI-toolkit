@@ -97,6 +97,12 @@ start, stray plugins, stored key bindings), see [d2rloader.md](d2rloader.md).
 | A test tool's reply lines go missing now and then (about 7% of lines in one harness) | The plugin opened its reply file while the tool polled it; a failed open dropped the line | Append each line in one write with full file sharing and a retry |
 | Settings change by themselves between test runs | Several client instances share one save folder and its `Settings.json` | Own `savepath` per instance ([plugin-techniques.md](plugin-techniques.md)) |
 | Recipe ignores its condition | cubemain `op` outside 1-28 (search handles player ops 1-14, matcher item ops 15+; unknown passes) | Plugin hook on the recipe search / matcher |
+| A joined character shows **0 gold** until it picks some up | The join skipped the forced vitals pass: the new client's stat cache starts at 0, so gold and experience must be sent at the load | Send `0x95`, the gold (`0x19` or stat 14) and the experience at the join ([network-messages.md](network-messages.md#the-join-in-order)) |
+| An item sold to an NPC **stays on the cursor** | The sale's `0x9d` 5 went out without item flag `0x20`; the client reads it as a pick-up | Set the flag; send the item's leave before `0x2a` ([items-inventory.md](items-inventory.md#9-prices-and-transactions)) |
+| **Quest Log button missing** or quest state forgotten after a rejoin (suspected) | The join did not end with `0x5e`, `0x28` type 6 (guid 0, the player's record) and `0x29` | Send the join quest block for saved characters too |
+| Clicking a waypoint or other town object right next to it does nothing | The client sends `0x41` when its own walk ends, up to a subtile short of the server's position; a strict range check refuses it | Walk the player up and operate on arrival, as 1.14d's `0x548b00` does ([objects.md](objects.md)) |
+| The connection drops when a player clicks another player | D2R's trade offer C->S `0x2b` (and `0x2c`) is variable, 3 + `u16`; a splitter with no size for it desyncs | Frame both by their length field and answer with `0x2e` ([network-messages.md](network-messages.md)) |
+| Players and corpses stack on one spot in town | Engine rule: the join, respawn and corpse searches leave the player footprint out | Expected ([engine-limits.md](engine-limits.md)) |
 
 ## Hangs
 
@@ -113,13 +119,14 @@ Engine facts for automated checks; the toolkit's tools and harness contract are 
 |-|-|-|
 | Keys (Esc, Enter, letters, digits, F-keys, arrows) | posted `WM_KEYDOWN` / `WM_KEYUP` (scancode in lParam) and `WM_CHAR` work without focus | observed |
 | Modifiers (Shift, Ctrl, Alt) | read from the keyboard state, not from messages: posted modifiers are ignored | observed |
-| Mouse | position from `GetCursorPos`, buttons from `GetKeyState`; `WM_MOUSEMOVE` / button messages are ignored, with or without focus. A plugin harness has to answer those calls | observed |
+| Mouse | position from `GetCursorPos`, buttons from `GetKeyState`; posted `WM_MOUSEMOVE` / button messages do not set them, with or without focus. A plugin harness has to answer those calls | observed |
+| Hover and unit clicks | D2R tracks mouse leave with `TrackMouseEvent`. With a harness answering the cursor calls, Windows still checks the **real** cursor, finds it off the window and posts `WM_MOUSELEAVE` at once, which drops the hover, so a click on an NPC, waypoint, portal or other unit becomes a walk to that spot. Answer `TrackMouseEvent` in the harness too (queries excepted), then hold the cursor on the unit and post `WM_MOUSEMOVE` there every 50 ms for a few hundred ms (about 60 ms for a wandering NPC) before the button: the client then sends its interact request | observed |
 | Developer console (Ctrl+`) | an input action: cannot be opened by posted keys; run lines through D2RCore's console call instead. Command and cheat output appears only in the console panel | observed |
 | Cursor and focus | D2R calls `SetCursorPos`, `ClipCursor` and `SetActiveWindow` during a normal start; D2RLoader relaunches itself, so a "show without activating" start flag is lost and the window comes to the front for about a second | observed |
 | Screenshots | `PrintWindow` with full-content rendering captures the DX12 window live behind other windows or on another monitor; the client-only flag returns black; a minimized window cannot be captured | observed |
 | Rendering in the background | keeps 60 FPS when not in front | observed |
 | Graphics mode | a fresh settings file can start in legacy graphics; G switches to HD (send it a few seconds after the game loads) | observed |
-| NPC menus | a background click on an NPC walks next to it but the menu does not open; a plugin that sends the start-talking request through the server handler table does open it (after the speech, up to about 30 s on a first talk) | observed |
+| NPC menus | a background click on an NPC walks next to it but the menu does not open (the mouse-leave drop above; with `TrackMouseEvent` answered the click talks); a plugin that sends the start-talking request through the server handler table does open it (after the speech, up to about 30 s on a first talk) | observed |
 
 ## Testing workflow that worked
 

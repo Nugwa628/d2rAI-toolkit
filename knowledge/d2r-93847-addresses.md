@@ -28,7 +28,7 @@ Ghidra notes. "Hooked" = installed with the entry bytes shown and ran in game; "
 | game +0x144 + type*4 | per-type unit id counters (zeroed at create) |
 | game +0x3630 | tile (type 5) unit list |
 | game +0x57e8 | "empty since" timer of the 300 s idle sweep |
-| game +0x5800 | 30 s periodic save timer (`0x41e0d0`); `0x406e10` (hardcore game over) also writes it: shared or misread, verify |
+| game +0x5800 | time of the last save (ms, host clock). The per-frame client update `0x408ea0` saves every player via `0x41e0d0(game, 0)` once more than 30000 ms have passed; the forced save `0x406e10` and the leave save also stamp it (see [saves.md](saves.md)) |
 | game +0x5820 | terror-zone level list (`0x489b70`) |
 | game +0x1a5d8 / +0x1a5dc | closing; second join-refusing field (setter unknown) |
 | game +0x1aa48 | event-modifier vector (create argument) |
@@ -182,7 +182,11 @@ create `0x2f65d0` (zero-fills 0x2b00), release `0x2f9eb0`. Extended list +0x2af0
 | `0x46b6a0` / `0x468790` | game password check / Unicode case fold |
 | `0x535400` | character join checks on the save header (refusal codes in [network-messages.md](network-messages.md)) |
 | `0x46c000` | character name check on the save path |
-| `0x41e0d0` | periodic save (30 s timer `game+0x5800`) |
+| `0x41e0d0` | (game, leaver) save of **every** client with a player (leaver null for the timer and forced saves); 30 s timer at `game+0x5800` |
+| `0x406e10` | (game) forced save: `0x41e0d0(game, 0)`, then stamps `game+0x5800`. Callers: NPC buy, sale, identify, the scroll decipher, a hardcore death |
+| `0x405f1c` | save at a player's leave (saves everyone, restamps `game+0x5800`) |
+| `0x483b20` | join: forced gold / experience pass (senders `0x4781e0` gold, `0x478080` experience) |
+| `0x52ce60` / `0x528330` / `0x5288e0` | C->S `0x2b` trade payload decoder / trade offer / trade setting handlers |
 | `0x408ab0` | per-client output step run by the idle sweep |
 | `0x641230` / `0x641160` | pop a system / game message from the network queue |
 | `0x4865d0` | store C->S `0x61` share data in the client |
@@ -350,6 +354,7 @@ empty). Functions holding one inline its destruction (see `0x5630e0`'s epilogue)
 | RVA | Meaning |
 |---|---|
 | `0x5371a0` | (game, &MissileParams) -> missile: create (server) |
+| `0x467420` | Molten Boulder offset reader; tables `0x1d1b370` / `0x1d1b3c0` (see [skills-missiles.md](skills-missiles.md)) |
 | `0x1b7760` | (&MissileParams, 0) -> missile: create (client) |
 | `0x166040` | (dataFlag, missileId) -> record or null |
 | `0x1b89a0` | (dataFlag) -> missiles.txt row count |
@@ -556,8 +561,15 @@ Static reading unless marked; matches the classic 1.13c functions in structure.
 | `0x517530` | (game, player, code, ilvl 0 = player's, ...) create an item by 4-char code in the inventory and send it (likely) |
 | `0x441980` | (game, player, code) -> item or null: find an item by code in the inventory |
 | `0x516a50` | (game, player, srcLevel, dstLevel) -> nonzero refuses: quest lock of a warp; only tested for levels 73, 100, 132, and 118 / 128 coming from 120 |
+| `0x4b94d0` | C->S `0x43` handler (not read; see [map-generation.md](map-generation.md)) |
+| `0x5a1d70` | Seven Tombs quest callback slot 19, the sequence filter (inferred from the classic layout, medium; see [quests-acts.md](quests-acts.md)) |
 | `0x550c20` | Rite of Passage experience (1.4M / 20M / 40M by difficulty) |
 | `0x3c1ad0` | (merc, notClassic, hireling id) -> revive price: `(level^2 / 2) x 15`, capped by hireling columns; called at the merc's death and again when paid (hooked in game) |
+| `0x541400` / `0x5415e0` | hireling list build / redraw when the list is used up (see [hirelings.md](hirelings.md)) |
+| `0x3c17b0` | hireling price quote |
+| `0x53d350` / `0x544ac0` | hire (C->S `0x36`) / bind the hireling to its owner |
+| `0x53eef0` / `0x4ffb90` | resurrect a hireling / hireling death |
+| `0x480df0` / `0x480ca0` / `0x478a50` | S->C `0x81` / `0x7a` / `0x9b` builders |
 
 ## NPCs and services
 
@@ -633,6 +645,7 @@ Static reading unless marked; matches the classic 1.13c functions in structure.
 | `0x471950` | (player, itemId, toInventory, distance, ...) ground pickup (packet 0x16 and others). Hooked in game |
 | `0x471500` | (player, loc*, ids*, count, 0) place: grid check `0x472d20`, class / carry check `0x4734f0` |
 | `0x473960` | carry1 check: compares the uniqueitems `carry1` **number** (record `+0x30`, an int) of carried uniques, not the unique row. Two different uniques with the same carry1 value block each other |
+| `0x38ba30` | inventory remover; also clears the main-weapon guid when that item leaves |
 | `0x382df0` | (loc[4]) body location 1-12 helper |
 
 ## Player death and respawn
@@ -664,7 +677,7 @@ Static reading unless marked; matches the classic 1.13c functions in structure.
 | `0x33f6a0` | second skill restrict test (modes 0-2 only), used by the event-skill caster `0x589930` (procs, charges, oskills). The main usable test `0x33f360` also knows only `restrict` 0-2 and lets other values through; the skills record holds the mode at `+0x2d0`, State1-3 as i16 at `+0x2d2` |
 | `0x5896e0` | (caster, skill, level, target, flag) event cast: returns 0 when the caster has state 54 (uninterruptable). Whirlwind holds state 54 (with 174) for the whole spin, which is why chance-to-cast on striking / attack never fires while spinning |
 | `0x441b10` / `0x5590c0` / `0x439130` | durability wear after a hit (game, unit, item) / skill-use wear or stack chance / quantity use (every throw and stack skill use goes through it) |
-| `0x406e10` | Hardcore game-over timer start (game `+0x5800`), called by the dead-mode entries `0x42a5e0` / `0x42de40` for a character with player-info flag 4 (hardcore); flag 8 = dead |
+| `0x406e10` | forced save (see Game create, join and message plumbing), also called by the dead-mode entries `0x42a5e0` / `0x42de40` for a character with player-info flag 4 (hardcore); flag 8 = dead |
 | `0x2386bd8` | properties.txt `func` count (37) checked by `0x3d4620` before the table `0x2386ab0`; D2R fills 1-25 and 36, **26-35 empty** (the slot is skipped). Shared stat adder `0x3d5940` (dataFlag, type, unit, item, property, set, stat, layer, value, state, flags, extra) as used by function 1 (`0x3cf960`) |
 ## Server -> client chat line
 

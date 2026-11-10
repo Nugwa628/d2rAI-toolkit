@@ -36,6 +36,7 @@ Variable S->C length rules (observed unless marked):
 | `0x73` | create missile | 21 + 67 x `u8@20` |
 | `0x3e` | item stat update | `u8@1` (2 + bit buffer, at most 32) |
 | `0x61` (C->S) | client share data, relayed as S->C `0x78` | 3 + `u8@2` (static only) |
+| `0x2b`, `0x2c` (C->S) | D2R trade offer / trade setting | 3 + `u16@1` (observed: 16 and 13 bytes) |
 | `0x94` | all skills | 6 + 3 x `u8@1` |
 | `0x9c`, `0x9d` | item messages | `u8@2` (max 252) |
 | `0xa8` | state on with values | `u8@2` (1.14d had it at @6) |
@@ -101,11 +102,12 @@ Not every id; the ones a plugin change commonly touches or that show up first wh
 | `0x22` | 12 | skill item refs (tome/scroll charge counts) |
 | `0x23` | 13 | set hand skill (left/right) |
 | `0x26` | var | chat / overhead text |
-| `0x27`, `0x28`, `0x29` | 40, 103, 97 | NPC dialog list, interaction/quest record, game quest record |
+| `0x27`, `0x28`, `0x29` | 40, 103, 97 | NPC dialog list, interaction/quest record, game quest record. `0x28` = `{u8 type @1, u32 guid @2, u8 0 @6, 96-byte quest record @7}`: type 1 opens the NPC panel and names the NPC; type 6 refreshes the record and always carries guid **0** (every 1.14d type-6 sender, and the D2R host in captures) |
 | `0x2a` | 15 | NPC transaction result {type, result, 0, guid or -1, gold}; result 0 = success |
 | `0x2b` | 206 | correct path (only when client and server paths differ) |
 | `0x2c` | 8 | play sound |
 | `0x2d` | 5 | echo of the client loop counter `0x6f`; also sent before other messages when the counter moved |
+| `0x2e` | 6 | D2R trade event `{u8 event @1, u32 value @2}`: 2 cancelled by the sender, 3 step done (both sides), 4 cancelled by the other side (value = trade id), 5 setting changed (value 0/1). The client's size table marks it variable; every send site writes 6 |
 | `0x3e` | var | one item stat changed (repair, recharge, throw stack quantity); layout under "Stat and state messages" |
 | `0x42` | 6 | destroy hand (cursor) item |
 | `0x47` / `0x48` | 11 / 11 | item modifiers / requirements-met refresh; follow every request that ran the inventory refresh |
@@ -118,6 +120,7 @@ Not every id; the ones a plugin change commonly touches or that show up first wh
 | `0x63` / `0x64` | 17 / 4 | waypoint bit record / waypoint visit (static only) |
 | `0x67`-`0x6d` | var / 10-16 | monster moves, attacks, death (`0x69` action 8, then 9), neutral |
 | `0x73`, `0x85`, `0x86` | var, 10, 5 | missile create, hit, remove |
+| `0x77` | | UI action; `0x77 0x10` opens the stash panel (sent by the stash object's operate, [objects.md](objects.md) section 4.8) |
 | `0x82` | 81 | town portal owner link (below) |
 | `0x8f` | 33 | heartbeat reply (all zero) |
 | `0x94` | var | all skills |
@@ -152,7 +155,9 @@ Server handler RVAs from the handler table `0x1d2a790` (build 93847).
 | `0x20` | var | cube transmute | `0x4c1590` |
 | `0x26` | 36 | use item (potion, scroll, cube) | `0x4c13b0` |
 | `0x28` | 21 | insert into socket | `0x4c0b20` |
-| `0x2f` / `0x30` | 5 | start / end NPC dialog (NPC within 7) | `0x4c2410` / `0x4c2330` |
+| `0x27` | | move gold between the backpack and the stash (positive in, negative out; layout low confidence) | `0x4ba580` |
+| `0x2b` / `0x2c` | 3 + `u16@1` | D2R trade offer / trade setting (below) | `0x4c2320` -> `0x528330` / `0x4c2310` -> `0x5288e0` |
+| `0x2f` / `0x30` | 5 | start / end NPC dialog (NPC within 7); the client also sends `0x30` naming the stash object when it closes the stash panel (`0x4c2330` -> `0x502f60`) | `0x4c2410` / `0x4c2330` |
 | `0x32` / `0x33` | 24 | buy / sell | `0x4c4650` / `0x4c5380` |
 | `0x36` | 17 | hire mercenary | `0x4a9520` |
 | `0x37` | 9 | NPC travel (caravan) | `0x4a9880` |
@@ -179,6 +184,15 @@ payload only); the pops (`0x641230` system, `0x641160` game) hand the handler `{
 `0x51` (give to mercenary) replies in this order (static only): `0x42` when an item is given, `0x9d` action 8 (the
 merc's item off), `0x9d` action 6 (the given item on, owner type 1), `0x9c` action `0x11` (the merc's old item onto
 the cursor). Body locations 11/12 (the swap slots) cannot be addressed by it.
+
+**Trade (`0x2b` / `0x2c`, new in D2R; observed).** A click on another player walks or runs to him (`0x02` / `0x04`
+to unit type 0), then sends `0x2b` with payload `{u32 trade id, u32 0, u32 partner guid, u8 item count, count x 16-byte
+items}` (13 bytes with no items; decoder `0x52ce60`) and shows "Asking other player to trade". Its Cancel sends `0x2c`
+with payload `{u32 trade id, u32 0, u16 4}`, repeated with the next move. Answering `0x2b` with `2e 04 <trade id>` and
+`0x2c` with `2e 02 <trade id>` closes the prompt cleanly (observed against a custom game server; a real host's answers
+are not captured). A server or proxy that has no size for `0x2b` must not guess: a fixed-size splitter desyncs. In
+1.14d the id had no handler (dispatcher `0x54d750` returns 3 and the client is dropped); its click on a player was the
+interact `0x548b00`, which asked to trade with `0x77` 0 and 1.
 
 ## Where the server handles them (hook points, build 93847)
 
@@ -233,9 +247,17 @@ Observed on a TCP/IP join to a hosted game (times from the TCP connect):
      fresh character, the count coming from `0x388c70` (3, plus configured extra tabs, plus 2 in a Garden game;
      medium for the last terms);
    - skill state `0x22`, `0x21`, `0x23`;
-   - quest records `0x5e`, `0x28`, `0x29`;
+   - quest records `0x5e` (37 notIntro bytes), `0x28` type 6 with the player's own record, `0x29` (1.14d
+     QUESTS_SequenceCycler `0x546270`), for a saved character too. A rejoin without the `0x28` leaves the client
+     believing the player has no quest bits until an NPC talk or the quest log resends it (suspected cause of a
+     missing Quest Log button; unconfirmed);
    - `0x0b` (you control this unit), `0x5f` portal flags;
-   - stats, then the player's items as `0x9d` (action 4 inventory, 6 equipped) and `0x9c` (action `0x0d` belt);
+   - stats (base stats, unspent stat points 4 and skill points 5 when set, max life/mana/stamina in 8.8, the level,
+     stash gold 15 when set), then the player's items as `0x9d` (action 4 inventory, 6 equipped) and `0x9c` (action
+     `0x0d` belt);
+   - a forced vitals pass (`0x483b20` calls `0x4f31a0` with force 1): `0x95`, then the carried gold and the experience.
+     The new client's cache starts at 0, so gold goes as `0x19` (1-254) or stat 14 in `0x1d`-`0x1f` (sender `0x4781e0`)
+     and experience as `0x1a` / `0x1b` / `0x1c` (sender `0x478080`). A join that skips them shows 0 gold (observed);
    - `0x03` new act, town rooms `0x07` interleaved with NPCs (`0xac`, `0xa8`, `0x6d`) and objects (`0x51`);
    - other players already in the game;
    - `0x15` warp to the start position, `0x7e`, `0x53` time of day.
@@ -248,7 +270,10 @@ Periodic server traffic while idle (observed): `0x8a` NPC hail every 0.8 s while
 chunks every ~30 s (autosave) and on leave.
 
 **Leave:** C->S `0x69`; S->C the save push, `0x5a` (player left), roster `0x75` and party updates, `0x0a` for the
-player's stash-tab units, `0x23`, `0x06` end game; then the host closes the connection.
+player's stash-tab units, `0x23`, `0x06` end game; then the host closes the connection. 1.14d's client removal
+(`0x539da0`) sends the party's messages first, then the unit removals as the frame's room deletes. The leaving client
+needs little of this: its own `0x5a` type 3 followed by `0x06` returned it to the menu cleanly (observed against a
+custom game server, without the `0x75`s, `0x8d`, stash-unit `0x0a`s and `0x23`).
 
 A plugin that builds per-player state should key it on the player unit after `0x04` (state 4); before that the
 player may not exist yet. There is no engine "player joined" callback a plugin gets for free.
@@ -305,6 +330,16 @@ with its next per-frame update, not at once. Per frame and per client that sees 
 10% with mana above half; otherwise potion change -> `0x18`, life/mana -> `0x95`, stamina -> `0x96`. Gold uses
 `0x19` for a delta of 1..254, else absolute `0x1d`-`0x1f` on stat 14. Experience uses `0x1a` / `0x1b` / `0x1c` by
 size.
+
+**Sale to an NPC** (1.14d D2GAME_STORES_SellItem `0x579510`; the D2R order of the first part matches a working
+client): the item leaves the seller first, then `0x2a`, then the item put on sale (`0x9c` `0x0b`) and the gold.
+From the backpack grid the leave is `0x22` for a scroll or tome, then `0x9d` 5 **with item flag `0x20`**, then
+`0x47`/`0x48`; without the flag the client reads `0x9d` 5 as a pick-up and keeps the item on its cursor (observed).
+From the cursor (`0x33` with location kind 4) the leave is `0x42`, then `0x47`/`0x48`.
+
+**Quest messages.** A dialog choice sends `0x27` then `0x29` (1.14d `0x545780`). TriggerFX (`0x545760`) sends each
+placed player its `0x28` type 6, then `0x89`. The client's quest-log request (C->S `0x3e`) gets `0x28` type 6, `0x52`
+(41 status bytes) and, for the Den, `0x50`.
 
 **Level-up**, about one frame after the experience: `0x1d`-`0x1f` for the level stats and points, `0x95` refill,
 the experience message, `0x2c` sound to the player, `0x75` to all, `0x20` to the others.
@@ -471,8 +506,9 @@ stash-tab units refused. The relation records and party rules behind these are i
   to every player. With 8 players one 6-byte `0x4f` can become 10 messages; the engine does not throttle `0x4f`.
 - **Join** (`0x408ea0`, then `0x507fd0`): `0x5b` about each other player to the joiner and about the joiner to them,
   `0x5b` about the joiner to itself; per player both relation records, `0x8d`, `0x8b` both ways and one `0x8c` per
-  record; then `0x5a` type 2 to everyone. **Leave**: `0x5c` to the others, leave the party, drop the records, `0x5a`
-  type 3.
+  record; then `0x5a` type 2 to everyone. After each `0x59` (a player or a player corpse) the viewer also gets its
+  `0x75` about that unit (1.14d `0x53e8f0`; a corpse has its owner's party). **Leave**: `0x5a` type 3 first, to everyone including the leaver, then `0x5c` to the others, leave the party,
+  drop the records (order from the 3.3 capture and 1.14d; see [engine-server.md](engine-server.md)).
 - **Chat** (classic routing with D2R's `0x26`): say goes to everyone including the sender, except where the receiver
   squelched the speaker or the speaker ignores the receiver. A whisper (name length 1-15, case-insensitive match)
   goes as type 2 to the target and type 6 to the sender; unknown name -> `0x5a` type 4, blocked -> type `0xd`.
@@ -530,5 +566,5 @@ mid-function; the `0x82` builder `0x47a450` has no direct callers in the exe. Cl
 - **Do not imitate 1.13c/1.14d layouts** for anything above `0x36` C->S or for the item and stat messages.
 
 Open questions (not captured): NPC dialog and shop messages (`0x2f`, `0x27`, `0x28`, `0x31`, `0x38`, `0x32`,
-`0x33`, `0x2a`), waypoint menu and travel (`0x41`, `0x64`, `0x63`, `0x4b`), party (static only, above) and trade
-with two players, the loader-core chat handler (`0x15`).
+`0x33`, `0x2a`), waypoint menu and travel (`0x41`, `0x64`, `0x63`, `0x4b`), party (static only, above), a real host's
+`0x2e` answers to a trade, the loader-core chat handler (`0x15`).

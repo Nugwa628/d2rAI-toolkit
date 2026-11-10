@@ -24,6 +24,8 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [skills-missiles.md](skills-missiles.md) | Skill start/do and per-slot behaviour (RVAs, seed draws, D2R changes), monster per-attack stat draws, the missile hit handler, timed states and curses, mercenary AI, stats and item giving |
 | [monster-ai.md](monster-ai.md) | The AI tick and target search, think timing, what each common AI does with its aip values, hirelings and summons, unique-mod start handlers at monster init, the 0xac message, player corpses |
 | [objects.md](objects.md) | World objects: populate/init/operate tables, PreOperate and mode jitter, chests and their TC level, traps, shrines, wells, doors, portal pairs, object messages |
+| [quests-acts.md](quests-acts.md) | Quests across the five acts: quest records and flags, the shared quest machinery (status, syncs, sequence filters, intro rule), per-quest triggers and messages, Tyrael's trip and the end of game |
+| [hirelings.md](hirelings.md) | Mercenaries outside combat: the hireling row, hire list and quote, hire and resurrect, death and the owner's death or leave, items, save and load, messages |
 | [movement-modes.md](movement-modes.md) | Collision bits and move masks, path finders and the step, line of sight, speed, unit modes, animation timing and breakpoints, the event queue, mode and walk messages |
 | [units-stats.md](units-stats.md) | Units, stat lists, states and party records: unit header, allocation and ids, seed draw order, stat list flags, state bits, relation and party rules, server timing |
 | [network-messages.md](network-messages.md) | Client/server game messages: framing and sizes, the useful ids, server hook points, the join in order, item action codes, weapon swap |

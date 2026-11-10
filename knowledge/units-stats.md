@@ -107,6 +107,13 @@ the state on. Applying the same state again moves the expire frame to the new va
 exception (extends only). `remhit` states are removed when the unit is hit; `hide` is not read by either server
 sender (medium).
 
+**Death drops states** (1.14d D2Common_10469 0x627540, then STATES_UpdateStayDeathFlags 0x639fb0; static only in
+D2R): every state list is freed except the items' lists and the basic and overlay lists whose state has the
+states.txt flag for that unit kind (`plrstaydeath` for players, `monstaydeath` for monsters, `bossstaydeath` for
+bosses), then every other state bit outside the unit's mask is cleared. It runs at a player's Death and Dead mode
+starts, and at a monster's death start (MONSTERMODE_OnDeath 0x5a6520), where "boss" is the monstats boss flag
+(UnitIsMarkedBoss 0x63e9f0). A mod state meant to survive death needs the right flag for each unit kind.
+
 ## 6. Party and relation records
 
 | What | Value (build 93847) | Confidence |
@@ -138,6 +145,19 @@ sender (medium).
   `0x509430` reads the game's terror-zone list (`0x489b70`, `game+0x5820`) and a value inside the loader core.
 - Distance used by the party sync: `0x324fc0`, per axis `max(0, |d| - size1/2 - size2/2)`, then `max + min/2`
   (players have size 2).
+- **Life percent** in every 0x7f (party sync, a player's own 0x7f on an area change, a merc's) is whole points:
+  `(life >> 8) * 100 / (max life >> 8)` (`0x34a220`, 1.14d UNITS_GetCurrentLifePercentage 0x621f20), 0 for a max
+  life below one point, sent as 0xffff from 0xffff up. Captured: a player at 27 of 40 life got 67. high
+- **Sync cache** (per recipient and member, client +0xe8; 1.14d PLAYERDATA_AllocPartyData): sends on an area change,
+  a change of more than 8, or the seventh small change. It lives with the client: 1.14d frees it only when the player
+  leaves the game (FreePartyData), not on a party leave, so after re-partying with unchanged life and area nothing is
+  sent until the life moves. static only
+- **Own 0x7f** (a D2R delta, one capture): 1.14d never sends a player a 0x7f about itself (BroadcastAutomapAllyPartyInfo
+  0x5406a0, D2R `0x5073d0`, skips the recipient). The D2R host sends a **partied** player one about itself on the
+  same 30-frame grid; rebuilt from the vitals, every send fits the member rule with the second small change instead
+  of the seventh. Which D2R path sends it is not found. observed
+- **Corpses in the roster**: a corpse's 0x75 carries the party of its inventory's owner (1.14d 0x540710), no flags,
+  state 0, level 0.
 
 ## 7. Timing
 
