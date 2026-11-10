@@ -244,6 +244,43 @@ owner into control `+0x60/+0x68/+0x6c`, runs set-state with the given special st
 frames later. D2R has no null-owner path. Pets are not leashed by the core tick (the core leash reads another owner
 field); each pet AI follows its owner itself, and the pet prelude removes a pet whose owner is gone.
 
+### Summons and pets in classic 1.14d
+
+Read in the classic 1.14d Game.exe (**addresses are 1.14d's, not 93847 RVAs**; not re-checked in D2R).
+
+- **Creation** (SKILL_CreateSummon `0x56d940`): the room at the point is found from the owner's room, the spawn uses
+  flags 0x42 (no normal mods, no minion party), first at the spot alone, then within 4 rings (skipped for summon
+  flag 4). The pet starts in skills.txt `summode` (via `0x56e620`: S2 Hydra, S1 golems and Raise Skeleton, NU
+  Valkyrie): CreateUnit `0x555230` sets the mode before the monster fill `0x574250`, whose InitAnimFrame `0x5533d0`
+  loads the animation at frame 0 with no mode-change or end event, so the pet holds that mode until its first think
+  starts another one. Then UNITFLAG_NOTC, the owner link (`0x58f030`) and the first think 25 frames on. monstats
+  inTown is set on Valkyrie, the golems and the skeletons.
+- **Summon buffs** (SKILLNEC_ApplySummonBuffs `0x5c4470`), in order: passive and aura stats, aurastate, the calc1 life
+  bonus and the sumskills (a Hydra head gets HydraMissile); item events of each passive stat and nonzero aura stat
+  (itemstatcost itemevent1/2, skipped when the pet already has that key; D2SetAuraEvent `0x56e740`); the skill's
+  auraevent1..3 keyed by aurastate, old ones of that key removed first; sumumod 1..42 (InitUmods); sumoverlay; the
+  summon items (SKILLASS_EquipSummonItems `0x5d6b60`) at item level min(owner level, max(1, 3 x skill level)) when the
+  caller passes 0, as all but Valkyrie (`0x5dc1e0`, its calc2) and the corpse-position summon do.
+- **AI skill use** (SERVER_UNIT_CastSkill `0x5dead0`) passes bResetSkillOnSameMode 0 to the mode start (`0x5a7c20`),
+  so a monster keeps the used skill through the mode start when it has the skill; the skill's target is the path's.
+- **Hydra (think 86, `0x5e9e60`)**: same branches as D2R's. The expiry test is signed (the head dies once the frame
+  is past p[0], which the Hydra skill writes through `0x5b0d70`); the death is a skill command at position 0, 0 with
+  mode 0 (`0x5ddfc0`); the roll is the unit seed's new low word `% 100`; the last step is PlanNextAiMove (`0x5de080`,
+  idle 10, going neutral first). hydra1-3 have monstats Align 1, so the heads are on the players' side.
+
+| A pet leaves its owner's list when | 1.14d path |
+|-|-|
+| the owner leaves | FreePets `0x5746d0` from `0x5349d6`: PETS_FreeOrKillPetList `0x574570` pettype by pettype, each pet through KillHandlerPet `0x574450` (NOXP, then killed if monstats killable, else a death with the owner as attacker) |
+| the owner dies | after the body: every pet type from row 1 through KillHandlerPet (no attacker, no experience, the 0x7a pet removal to every player), the hireling row 7 with its own kill |
+| the pet is killed | SERVER_KillMonster `0x57ccb0` -> `0x5751a0` (`0x5750e0`, removal message, no second kill) |
+| the pet died another way | player event 0xb (`0x580be0`, ally info `0x575630`) runs PETS_RemoveDeadPets `0x575590`; first set 250 frames after placement (`0x534ad0`), then every 30 |
+| the pet's unit goes | `0x5431f0` -> PETS_HandleDeadPet `0x5752b0` |
+| the owner changes area | PETS_ManagePetsByType `0x5754b0` (from relocation `0x555057` and act warp `0x53aea6`): a pettype warp pet comes to the owner (`0x574cc0`, footprint put on the owner's point with no free-spot search, `0x650910`); a range pet more than 0x640 squared subtiles away dies (`0x575380`); any other dies (`0x574c60`). The hireling (row 7) is handled between the revive row and the dopplezon row. A resurrect (`0x54c0e0`) relocates through `0x53aec0` the same way |
+
+**Monster skills** (classic monster init, SetSkill / SetSkillMode): every monster gets its monstats Skill1..8 that
+have a level above 0, at `Sk<n>lvl` plus the difficulty's MonsterSkillBonus; a hireling gets these before its
+hireling.txt skills. Without the entry the AI's cast has no used skill and its swing does nothing.
+
 ## 8. Monster init: what a new monster gets
 
 After the spawn core places a monster, `0x543e90` makes its base stats (see [combat-formulas.md](combat-formulas.md)):

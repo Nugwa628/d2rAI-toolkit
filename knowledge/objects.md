@@ -148,10 +148,17 @@ Gate first (dead/dying or state 0x36 refused, see [engine-server.md](engine-serv
 3. `0x42bfb0` must let the player start the action (OperateFn 5 with skill 1; OperateFns 15, 16, 44, 47, 50, 66, 71
    with mode 2).
 4. Interact range `0x34bc90` (distance 0 or the corner ring test `0x34bde0`); classes 152 and 561 are exempt. Out of
-   range, the client walks up and asks again.
+   range, the client walks up and asks again. The client sends its 0x41 when **its own** walk ends, which can be a
+   subtile short of where the server has the player (observed at a town waypoint of size 5), so a server that only
+   checks range here refuses touches the player sees as in reach. 1.14d's object interact (`0x548b00`) instead takes
+   an object out of range as the target of a walk and operates on arrival; its walk end (`0x580c20`) runs `0x548b00`
+   again, so a walk that ends short or still blocked walks again.
 5. In `0x593630`: the object is in the player's room or its near rooms; unit distance (`0x325140`) at most 50; the
    object targetable; the player not dead and not in state 0x36; a cursor item only for OperateFn 25.
-6. Unless class 152: a clear line (`0x350550`, mask `0x804`, walls and closed doors).
+6. Unless class 152: a clear line (`0x350550`, mask `0x804`, walls and closed doors). 1.14d's version
+   (`TestCollisionBetweenInteractingUnits`, from `0x548b00`) first moves each end of the line towards the other by
+   its own unit's size, capped at 2 (the player's 2, the object's `SizeX`), and walks the player around instead of
+   refusing.
 7. The param is the cursor item's guid, or `0xffffffff` with none; OperateFn below 0x4b and not null.
 
 Dispatch `0x592c40` builds `{game, object, player, object control seed, class}` and calls entry `OperateFn` of
@@ -250,6 +257,14 @@ Event 1, end of animation: mode 1 -> 2 when `Mode2` is set, written directly (no
 numbering, medium for the quest cases).
 
 ### 4.8 Waypoints and portals as objects
+
+**The stash** (class 267 = `0x10b`, OperateFn 32; 1.14d `0x564cd0`): only in town, from a player in town. It
+becomes the player's interact unit and the player gets S->C `0x77 0x10` (open the stash panel; D2R host captures send
+it right after the 0x41). A player has one interact unit, so opening the stash ends an NPC talk, trade or gamble (a
+store's or gamble grid's end goes out as `0x92`). Closing the panel sends C->S `0x30` naming the stash (`0x4c2330` ->
+`0x502f60`); object and NPC guids are counted apart and can be equal, so a `0x30` ends an NPC dialog only when it
+names the NPC the player is talking to. Gold moves need no open stash, only reach
+([items-inventory.md](items-inventory.md) section 6).
 
 Waypoints are OperateFn 23 (`0x58fe00`): touching one sets its bit; town and red portals are OperateFn 15
 (`0x58f680`). Their travel rules are in [engine-server.md](engine-server.md) section 5. Taking a portal ors 5 into its

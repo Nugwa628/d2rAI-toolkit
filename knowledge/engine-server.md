@@ -329,7 +329,8 @@ personal stash, never the shared stash. The server recomputes every price; the c
   Mercenary level and stats on hire/level-up: `0x544f60` (hook point for class bonuses). Formulas:
   [combat-formulas.md](combat-formulas.md).
 - Resurrect price `0x3c1ad0` = `min(max, trunc(level^2 / max(1, div)) * mul)` from the hireling row (defaults
-  50000 / 2 / 15). Expansion games only. Hooking it replaces the price.
+  50000 / 2 / 15). Expansion games only. Hooking it replaces the price. The hire and resurrect requests, the merc's
+  death, its messages and its save record are in [hirelings.md](hirelings.md).
 - Heal on talk (`0x53fc50`): life, mana, stamina to max, removes listed states, heals pets.
 - Respec (`0x4b2530`, D2R respec `0x580f20`): needs the NPC respec byte and quest 41 "pending"; spending it sets
   quest 41 granted. The reset runs in this order (static only): skill refund `0x4360f0` (each owned class skill's
@@ -468,6 +469,13 @@ missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, 
   gold drops, carried becomes 0, the stash pays a shortfall (a stash result outside its range resets it to 0 in
   D2R). Killed by a player: the penalty drops for the killer. In a single-player game the character keeps
   `500 x level` and loses at most the carried gold. Stat 175 records the loss.
+  - On the wire (**high**, captured): the pile goes out as 0x9c action 2 (drop to ground) before the 0x5a, the mode-8
+    0x0d and stat 175, then the same record again as 0x9c action 0 with the gold field's last bit set. That bit is
+    the pile's owner: 1.14d GOLD_DropGoldFromInventory stores the dropping player as the owner (unit flag 0x400),
+    and the gold writer `0x37fc80` ([item-format.md](item-format.md)) sets the bit for flag 0x400 with owner type
+    0. Without a free cell there is no pile: a player's kill keeps the amount carried, a monster's kill loses it.
+    1.14d's dropper (0x535510) refuses an amount above the carry limit, so a player kill whose penalty is above it
+    leaves 0 carried and no pile (**static only**).
 - **Experience penalty** (above level 1, not when killed by a player or a player's minion): difficultylevels
   `DeathExpPenalty`% of the current level's span; it never goes below the previous level's threshold (D2R stops
   **at** that threshold; classic kept one point above). The subtraction is unsigned: a character whose experience is
@@ -476,7 +484,55 @@ missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, 
 - **Corpse** `0x42c110`: a player-type unit with the owner's name, the equipped items moved onto it, and 75% of the
   lost experience stored for recovery. Picking it up (C->S 0x13, within 8, a clear path) gives the experience back
   once (`0x42b220` returns it between taking the items off the corpse and placing them, so a level-up can happen
-  mid-move). Another player may loot it only in hardcore with loot permission.
+  mid-move). Another player may loot it only in hardcore with loot permission. The step-by-step rules (belt, the 16
+  limit, the one-corpse save) are in [monster-ai.md](monster-ai.md#10-player-corpses).
+- **Corpse on the wire** (**high**, two captured deaths, identical): 0x8e {1, owner, corpse} to everyone, then one
+  0x9d action 8 per body item in body order, then the corpse unit, then 0x47/0x48 (sent by the frame's unit update,
+  not the creator), then the player's own 0x0d. Each death 0x9d 8 has item flag **0x20** set (1.14d
+  `ITEMFLAG_REMOVED`, set on every body item the creator takes off) and describes the item at its slot: mode 1, body
+  and x both the slot. A 0x9d 8 for an item taken to the cursor (C->S 0x1c) has no 0x20 and mode 4; the client tells
+  them apart by the flag, and without it keeps the item on its cursor (every later ground click becomes a refused
+  drop). The corpse unit's 15 messages, each with the corpse's guid:
+
+  | # | Message | Fields |
+  |-|-|-|
+  | 1 | 0x59 | the owner's class and name (zero-filled to 61 bytes), at the **corpse's own** x and y (71 bytes) |
+  | 2 | 0x75 | the owner's party (party of the corpse inventory's owner, `0xffff` none), flags 0, state 0, level 0 |
+  | 3-7 | 0x20 | stats 0x43, 0x44, 0x0c, 0x00, 0x02, each 0 |
+  | 8 | 0x74 | {assign, owner, corpse}; assign = the corpse's unit flag 0x1000: 1 for the death's own corpse, 0 for a loaded one |
+  | 9-10 | 0xa8, 0xa8 | state 7 (size 11, empty list); state 0x69 alignment (size 14) |
+  | 11 | 0x0d | action 9 at the corpse |
+  | 12 | 0x76 | |
+  | 13-15 | 0x0d, 0xa8, 0xa8 | 11, 9 and 10 again, only when the unit is placed (the death, the join) |
+
+  A corpse coming back into view gets messages 1-12 with assign 0, also the one that session's death made. 1.14d
+  sends the unit's own coordinates in 0x59 (SERVER_SendInitUnitPacket 0x571f90 -> 0x53e8f0); a corpse with assign 0
+  sent at 0, 0 is neither drawn nor clickable.
+- **Pickup on the wire**: 0x9d 6 per placed body item, each with item flag **0x01** (1.14d `ITEMFLAG_RELOAD`, set
+  on every item taken from a corpse) and the slot in x, mode 1 (captured), then 0x8e {0}, the corpse's 0x0a, the
+  refresh, then sound 0x2c 100 to the picker. The corpse step's own gold pile goes through `0x424d90` (D2R's
+  GOLD_DropGoldFromInventory, which in 1.14d makes the player the owner); whether D2R owns the pile for every caller
+  (also C->S 0x47's drop) is not read.
+- **Where a corpse lives** (1.14d, **static only** in D2R): the corpse stays in the room where its owner died, in
+  that act, for the whole game, through respawns, waypoints and act changes. When its room goes inactive the
+  inactive-unit saver (SERVER_GAME_UNIT_method 0x5433f0 -> SUNITINACTIVE_SaveInactiveUnit 0x542e10) keeps a
+  player-type unit in the corpse state: GUID and position go in the act's inactive list, the unit is unlinked, not
+  freed; SUNITINACTIVE_RoomInit (0x542b40) puts it back on the same spot when the room returns. The 0x13 handler
+  finds the corpse by GUID game-wide and compares only coordinates (walk-to above 8, refusal above 0x32), and
+  nothing compares acts: since the acts' coordinates overlap, a crafted 0x13 could reach a corpse in another act.
+  A custom game server should check the act.
+- **Join placement**: `0x485350` -> `0x4245c0` puts each saved corpse by the town start of the act the player joins
+  in, whatever act it was saved in (1.14d CLIENT_PlacePlayerInRoom 0x5394a0 -> PLAYER_PlaceCorpse 0x5352c0); the
+  exact spot comes from `0x2ef8b0` (captured one subtile off the start). 0x8e {1} goes right after the joiner's 0x15.
+- **Leave**: the corpses are freed with the player (D2R `0x424f60`; 1.14d PLAYER_Destroy 0x5349d0 queues each
+  corpse's room delete after the player's). The room delete list is last in, first out (0x61a270), so in one room a
+  watcher gets the corpse's 0x0a, then the player's, then the merc's; across rooms the watcher's view order decides
+  (0x5380d0 -> 0x53a770). All of them come after the roster's leave messages.
+- **States at death**: see [units-stats.md](units-stats.md#5-states-on-a-unit) (plrstaydeath and friends).
+- **The merc dies with its owner** (any life, no experience); see [hirelings.md](hirelings.md#6-death-and-resurrection).
+- **Hardcore death** forces a save of every player at once (`0x406e10`, which also restarts the periodic timer).
+  1.14d makes every save on the game thread (SaveGameAllGameTypes): an open or realm game hands the bytes to the
+  client or the realm; without a realm it writes the file with plain `fopen`/`fwrite`, no flush to disk, no backup.
 - **Corpse cap**: with 16 corpses already (`0x3892d0`) no corpse is made; the player still enters Dead mode, the
   loss record stays and the items go to the ground (medium).
 - **Respawn** C->S 0x3f (`0x4b6160`): only in the dead mode, refused in hardcore; full life/mana/stamina and a move to
@@ -484,6 +540,24 @@ missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, 
 - **Party**: the party iterator is `0x506ed0` (`0x506f90` is the one kill experience uses); kill experience with a
   level-gap penalty is `0x44fef0`. D2R splits party experience in doubles with a 64-bit pool capped at `0x7fffffff`.
   Hostility and loot flags travel in the party/relation messages ([network-messages.md](network-messages.md)).
+- **Party on the wire** (3.3 captures plus 1.14d):
+  - **Leave order**: 0x5a type 3 goes **first**, to everyone including the leaver, then 0x5c to the others, the party
+    leave, the pet removals, and last the 0x0a's as the frame's room deletes. The 3.3 leave capture gave the leaver its
+    0x5a before the party's 0x75/0x8d, and 1.14d's disconnect (0x52caf0) sends it before the removal; only classic
+    1.10's game-end path sends it after. The last member of the leaver's party sees `5a 5c 75 75 75 8d 0a`; a client
+    in no party `5a 5c 0a` (plus `7a` and a second `0a` for a merc). **high**
+  - **Leaving a party** (1.14d PARTY_RemoveUnitFromParty 0x5407a0, matches a 3.3 capture): the refresh (0x75 about
+    each member to each, 0x5a5ff0), then **one** 0x8d to the leaver about itself with `0xffff`; on a disband the last
+    member gets the same. Nobody gets a 0x8d about another player here; the others learn "no party" from the 0x75.
+    The stayer saw: 0x5a type 7 code 9, 0x75 leaver, 0x75 self, 0x75 leaver, 0x8d self. **high**
+  - **In view**: a player unit coming into view is 0x59 then 0x75 (1.14d 0x53e8f0 sends both): the 0x75 is the viewer's
+    roster entry for him (party 0x554630, his current level, the viewer's relation flags 0x55b350 and party
+    state 0x55b3f0, all 1.14d). Sending party `0xffff` there tells the viewer a partied player is in none. The attributes in
+    the same block (0x20; 1.14d SendInitUpdateAttributes 0x5489f0) are velocity, attack rate, level, strength and
+    dexterity as the unit's **base** stats (no item bonuses); velocity and attack rate were 100 in captures.
+  - **Level change**: no party message; the member's new area reaches the others at the next 30-frame sync. 0x90
+    depends only on distance, whatever the two levels.
+  - Life percent, the sync cache and the D2R own-0x7f delta: [units-stats.md](units-stats.md#6-party-and-relation-records).
 
 ## 8. Other hook points (build 93847)
 

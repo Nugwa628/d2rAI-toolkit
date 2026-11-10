@@ -287,6 +287,13 @@ The "faster X" stats go through `0x3516c0` with diminishing returns `cap*v/(cap+
   the owner's target node, so hostile monsters target pets exactly like players).
 - Pets are not leashed by the core tick; each pet AI does its own following.
 - A revived monster runs special state 7 (the necromancer pet think, melee variant).
+- Every monster's init also gives it its monstats `Skill1-8` that have a level above 0, at `Sk*lvl` plus the
+  difficulty's `MonsterSkillBonus` (1.14d monster init, SetSkill / SetSkillMode; unverified in D2R). A unit made as
+  a monster for a plugin's pet or hireling needs this, or its AI has no skill to cast or swing.
+- A pet is good-aligned (stat 172 = 2). Warp-type pets (the hireling among them) are brought to their owner on every
+  relocation (1.14d PETS_ManagePetsByType 0x5754b0 -> PETS_TeleportToRoom 0x574cc0). The owner's death kills the
+  hireling and frees the other pets; the owner's leave frees all of them, each with a 0x7a pet removal. Hireling
+  details: [hirelings.md](hirelings.md).
 
 ## 7. Corpses, resurrection and death
 
@@ -294,6 +301,10 @@ The "faster X" stats go through `0x3516c0` with diminishing returns `cap*v/(cap+
   flee on a fresh corpse within 15, the shaman's resurrect search) only see those.
 - Player corpses (creation, pickup, the 16-corpse limit, the one-corpse save) are in [monster-ai.md](monster-ai.md)
   section 10.
+- A player corpse is never freed when its room goes cold: the inactive-unit saver keeps a player-type unit in the
+  corpse state in the act's inactive list (GUID and position) and puts it back on the same spot when the room
+  returns (1.14d 0x5433f0 -> 0x542e10, restore 0x542b40; D2R's restore step is `0x503790`, section 2). Wire details
+  in [engine-server.md](engine-server.md#7-death-corpse-party).
 - Monster resurrect is AI-driven: the fallen shaman looks for a dead (mode DD) fallen or shaman base class within
   aip4 (squared distance), skips unique and champion corpses, and takes the **last** match of the scan. A unique
   shaman searches any such corpse, not only its own minions.

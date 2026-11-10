@@ -84,7 +84,7 @@ The header writer zero-fills 403 bytes and sets these; every other byte is zero.
 | 0x28 | 16 x {u16, u16} | skill hotkeys F1-F16: skill id (`0xffff` none, `| 0x8000` bound to the left button), item |
 | 0x68 | 4 x {u16, u16} | mouse skills: left, right, switched left, switched right (skill, item) |
 | 0x78 | 32 | appearance (component graphics and tints) |
-| 0x98 | 3 x u8 | town per difficulty: act, bit 7 = current difficulty |
+| 0x98 | 3 x u8 | town per difficulty: act in the low bits, bit 7 = current difficulty (written and read: "When the game writes a save" below) |
 | 0x9b | u32 | map seed |
 | 0x9f | 16 | mercenary: u32 flags (`0x10000` dead), u32 seed, u16 name, u16 type, u32 experience |
 | 0xaf | | six u64 ladder times, then six u32 ladder experience values at 0xdf |
@@ -169,6 +169,9 @@ ears, sockets) is in [item-format.md](item-format.md). Short form:
 | quality fields | magic 11 + 11, set/unique 12, rare 8 + 8 names + 6 x (1 + 11) | widths not verified |
 | stats | 9-bit id, `Save Param Bits`, `Save Bits` (value + `Save Add`), end `0x1ff` | 16-bit id, end `0xffff` |
 
+The gold record's trailing bit is an owner bit: set when the pile carries owner info (unit flag `0x400`) with owner
+type 0, a player (writer `0x37fc80`).
+
 Save pages are the engine page + 1: inventory 1, cube 4, stash 5 (location 0 = grid). Location 1 is the body, 2
 the belt (slot in x), 4 the cursor, 6 inside a socket.
 
@@ -200,6 +203,59 @@ Other load facts:
   stored (inventory, cube, stash) 0x9d 4, belt 0x9c 0x0d, socket children 0x9d 0x12 right after their parent.
   Cursor, ground and dropping items are not sent. Another client only gets the equipped items (and their sockets)
   when the player's unit reaches it (observed for the owner; other clients static only).
+
+## When the game writes a save
+
+Build 93847, static reading of the host side; classic names and flow from 1.10/1.14d for comparison. Confidence is
+high for the timer and the forced save (each step read), medium where marked.
+
+- **Periodic timer** (head of `0x408ea0`, the per-frame client update). `game+0x5800` holds the time of the last
+  save on the host's millisecond clock (`0x120d720`). A zero field is stamped and nothing is saved (the game's first
+  frame). After that, nothing happens until `now - field > 30000` (signed, strict: the 751st frame at 25 frames a
+  second). Then it walks the clients (`game+0x138`) for one that has a player; with none it saves nothing **and does
+  not restamp**, so the save comes on the first frame a player is loaded. With one it calls the save and restamps.
+  Classic used `frame % 8192` instead.
+- **The save** (`0x41e0d0(game, leaver)`, leaver null for the timer and forced saves) writes **every** client that
+  has a player: no dirty check, no skip for a dead or hardcore-dead player. Per client it logs
+  "PLAYERSAVEWrite(sPlayerSaveToStream) - IsPlayerExit", has D2RCore write the `.d2s` into a buffer and sends it
+  through the same chunk sink the upload uses (on a hosted game that is the `0xb3` stream every 30 s; medium for the
+  sink emitting `0xb3`). With the shared stash on, each tab section follows as its own file, then an optional side
+  file and one empty chunk that ends the stream. Classic's realm path skipped a save that differed only in checksum,
+  last-played time and map seed; D2R's realm path was not read.
+- **Forced save** (`0x406e10(game)`): calls `0x41e0d0(game, 0)` and stamps `game+0x5800`, so every player is saved
+  at once and the 30 s timer restarts. Callers: the Dead mode enter (`0x42a5e0`, `0x42e1bd`) for a hardcore
+  character only, tested on the character's own flags (`0x486900(client, 4)`), not the game setting; the NPC
+  buy `0x53d850`, sell `0x53f1a0` and Cain's identify `0x53c2b0` when they went through; Akara deciphering the
+  Scroll of Inifuss (`0x5e0830`, `a1q4.cpp`); and unidentified sites in `PlrMsg.cpp` (`0x4f2490`, `0x4fa27e`,
+  `0x4fd28f`), `a3q3.cpp` / `a4q3.cpp` / `a5q3.cpp` (`0x5ef040`, `0x5e5210`, `0x54d610`) and `0x4f461d`.
+- **Leave** (`0x405f1c`): the host calls `0x41e0d0(game, leaver)`, so every player in the game is saved and pushed,
+  not only the leaver, then restamps `game+0x5800`.
+- **Death**: the save's Dead flag (`0x8` in the character flags at 0x14) is set on every death; a hardcore
+  character (`0x4`) also forces a save of everyone (above).
+- **Game end**: the 300 s empty-game rule is in [engine-limits.md](engine-limits.md).
+
+**The header at a write** (classic writer PlrSave2; D2R's header writer `0x534340` lives behind D2RCore and its
+stamping was not read, so this is the classic rule): `town[difficulty] = act | 0x80` for the game's difficulty, and
+the other two difficulties' bytes lose bit 7. The map seed, the weapon set bit, the mouse skills and the last-played
+time are written from the live character.
+
+**The act at a load.** The town byte for the game's difficulty names the act in its low bits. Classic's load
+(PlrSave2) falls back to Act I for a byte of 5 or more, and for Act V in a non-expansion game; it does not check the
+act against the quest record. An act opens through the quest words 7, 15, 23 and 28 (Act I to IV completed, bit 0);
+Warriv's trip to Act II writes word 7 as `0x2001` (bits 0 and 13), as the trip's captured `0x28` shows. A hand-edited
+town byte for an act whose previous act is not completed is untested on the D2R host (medium).
+
+**Where a joining player and saved corpses land** (1.14d, matched by D2R captures where two players joined, respawned
+and left corpses on the same subtiles):
+
+- The join (CLIENTS_SpawnPlayer `0x5394a0`) uses DUNGEON_FindActSpawnLocationEx (`0x61b060`): the act's start tile
+  + 3, through a free-spot search with collision mask `0x1c09` (wall, no-player, object, door, no-path). A player's
+  footprint is `0x80` (COLLIDE_PLAYER), which that mask leaves out, so a second player joins **on top of** the first.
+- A respawn (`0x3f`) in the same act warps to the same point with the same mask. Only an act change
+  (LEVEL_ChangeAct) searches with `0x1c89`, which adds `0x80`.
+- Each saved corpse is placed by PLAYER_PlaceCorpse with mask `0x9c19` (includes COLLIDE_CORPSE `0x8000`) from that
+  same point. The body is allocated with no room, and the collision writer writes nothing for a unit whose old room
+  is null, so one placed corpse does not push the next away: several players' saved corpses share a subtile.
 
 ## What is safe to hand-edit
 

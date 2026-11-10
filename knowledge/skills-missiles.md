@@ -121,13 +121,13 @@ stages ([combat-formulas.md](combat-formulas.md)) and missile creation.
 | srvst 11 / srvdo 19 | Inferno, Arctic Blast | none | monsters skip the mana check; a re-cast moves the list 7 frames on; the start no longer calls the do |
 | srvdo 116 | Werewolf, Werebear | none | Param12 1 turns wolf into bear in one cast; a length <= 0 is permanent |
 | srvdo 117 / missile do 23 | Firestorm | each walker's own seed | Charged Bolt-style walkers |
-| missile hit 47 / 48 | Molten Boulder | missile damage roll | the impact runs without a target unit too; 18 fire offsets from a table in the image |
+| missile hit 47 / 48 | Molten Boulder | missile damage roll | the impact runs without a target unit too; 18 fire offsets from a table in the image (6.1) |
 | missile do 25 | Eruption | missile seed reset to `{x + frames left, 666}`, then x and y over `2 * (range - 1)` | |
 | srvst 56 / srvdo 120 | Feral Rage, Maul | combat's | the start succeeds without a target |
 | srvst 29 / srvdo 64 | Sacrifice | weapon roll, elemental; none on a miss | no melee-range test; hit flags OR 1; the caster keeps Param4 life |
 | missile hit 7 | Holy Bolt, FoH bolt | missile: calc1..calc2 heal, then min..max damage when below 1 | ends after a heal only with sHitPar3 1 or 3 |
 | srvst 37 / srvdo 13 | Zeal, Fend, Fury | elemental on a hit | start succeeds without a target; target filter 0x100003; melee offset 3 monster / 1 player; next target by guid |
-| srvst 31 / srvdo 67 | Charge | elemental, also on a miss | speed bonus is calc2 |
+| srvst 31 / srvdo 67 | Charge | elemental, also on a miss; then a monster's `0x588d50` mode draws | speed bonus is calc2 (1.14d: Param1); the run in 6.1 |
 | missile hit 17 | Howl | none | fear from calc2 / calc3 |
 | srvst 33 / srvdo 69, srvst 34 / srvdo 72 | Find Potion, Find Item | `% 100` chance, `% 100` kind; Find Item's drop draws on the corpse and game seeds | |
 | srvst 68 / srvdo 70 | Double Swing | elemental on a hit | new start: an attack-rate list per skill |
@@ -152,7 +152,7 @@ stages ([combat-formulas.md](combat-formulas.md)) and missile creation.
 | srvst 13 / srvdo 29 | Thunder Storm | none | puts stat 202 from unit +0x12c on the list |
 | missile do 10 | Blizzard | seed reset `{x + frames gone, 666}`, x and y `% 2(calc1 - 1)` | |
 | missile do 15 / 16, hit 29 | Frozen Orb | none | ring index `TargetX & 63`, advancing `(Param2 + index) & 63` |
-| srvst 14 / srvdo 144 | Hydra | none | end = calc1 + frame; a hireling caster summons for its owner; three heads |
+| srvst 14 / srvdo 144 | Hydra | none | end = calc1 + frame; a hireling caster summons for its owner; three heads; the end frame goes in each head's AI p[0] (1.14d `0x5b0d70`), read by think 86 ([monster-ai.md](monster-ai.md#7-hirelings-and-summons)) |
 | srvdo 61 | Confuse | `% 100` per eligible target whose curse list lacks this cast id | all six aurastats; resist cut to a fifth for base resist >= 100 (`0x55bfb0`) |
 | srvdo 59 | Attract | none | length divided by difficultylevels AiCurseDiv |
 | srvst 19 / srvdo 62 | Bone Prison | none | 12 pieces on a ring; none in a town room |
@@ -162,7 +162,7 @@ stages ([combat-formulas.md](combat-formulas.md)) and missile creation.
 | srvdo 79 | Conversion | `% 100` only for a queued physical hit on an eligible monster | a failed convert lets the hit land |
 | srvdo 80, missile hit 22 | Fist of the Heavens | none | item_damagetargetac lowers a monster's armour; bolt range / count from sHitPar1/2 |
 | srvdo 82 | Redemption | `% 100` per corpse in range; none in town | mana spent only when something was redeemed |
-| srvst 41 / srvdo 78 | Leap Attack | elemental on a hit | landing player sends a 64-missile ring; filter 0x100583 |
+| srvst 41 / srvdo 78 | Leap Attack | elemental on a hit | landing player sends a 64-missile ring (not in 1.14d); filter 0x100583; flight and landing in 6.1 |
 | srvst 67 / srvdo 9 | Frenzy | elemental per swing on a hit | one swing per call through the action frames; later swings at the next unit in reach; frenzy stats only after a hit |
 | srvst 39 | Berserk | elemental on a hit | no target: no swing, the state still goes on |
 | srvst 57 / srvdo 121, missile do 30 | Rabies | elemental on a hit; missile do: `% (2 * Param2 + 1)` x then y every Param1 frames, caster's seed | length only on a hit; plague only when the state is new |
@@ -183,8 +183,67 @@ and do 37 / 41 (pulse `0x466ea0`, one roll per element per pulse on the cloud's 
 srvdo Param2 as the missile every Param1 frames); Miasma Chains srvdo 167. Echoing Strike (srvdo 166, srvdmgfunc 16)
 and Blood Oath (srvst 66) hand off to D2RCore. None of these draw on their own besides formulas and missile creation.
 
-Not read: Revive (D2RCore), Grim Ward (srvdo 75, missile hit 26 / 27), Whirlwind's path stepping, Volcano (srvdo 123),
-Armageddon / Hurricane (srvdo 124, hit 56), the charge releases srvdo 38-41 / 143.
+Not read in 93847: Revive (D2RCore), Grim Ward (srvdo 75, missile hit 26 / 27), Whirlwind (srvst 38 / srvdo 76,
+`0x56a420` / `0x568f40`, hit delay `0x56ac00`), Volcano (srvdo 123), Armageddon / Hurricane (srvdo 124, hit 56), the
+charge releases srvdo 38-41 / 143, Kick, Throw and Unsummon. Their classic bodies are in 6.1.
+
+### 6.1 Slots read in classic 1.14d
+
+These bodies were read in the classic **1.14d** Game.exe (with D2MOO for names) because the 93847 dump did not give
+them. **Every address in this subsection is a 1.14d virtual address, not a 93847 RVA**; the slot numbers match D2R's
+tables. A D2R change from 1.14d would not show here. Draws are on the caster's seed unless stated.
+
+| Slots (1.14d) | Skill | Seed draws, in order | Behaviour |
+|-|-|-|-|
+| srvst 38 `0x5d8f50`, srvdo 76 `0x5d9580` (hits `0x5d9320`, end `0x5d9460`, next unit `0x56bd10`) | Whirlwind | per hit: the to-hit, then the elemental roll on a hit; a monster caster: one caster step per call for its hit count | the start refuses an Inferno caster (`0x5d8fbf`, not in D2MOO); sets run flag 1 and keeps the path end in param 0..1; uninterruptable and skill_move go on; the search reaches 5 subtiles but each swing lands with range offset 0, so a unit beyond melee reach is picked and not hit; the end (`0x5d9460`) returns before the aura part when the unit has no dynamic path, so the aurastate stays |
+| srvst 31 `0x5cf6b0`, srvdo 67 `0x5cf900` | Charge | the elemental roll, then a monster's mode draws (MONSTER_RecalculateCombatStats, D2R `0x588d50`) | the run path goes from the unit to the target unit (else the point), no path type set, at the run velocity x (max(velocitypercent, 50) + bonus)%; a monster's path gets distance 20; kept frames 7, 15 for Duriel (class 211). Each run event steps the path, and srvdo 67 moves its mode change to the next frame; in melee reach it drops the path and rewinds to the attack frame index (`0x5cf8c0`: the first row with event 0, minus 1). A path ending short sets run flag 2 and the next do ends the skill. 1.14d's speed bonus is Param1 (D2R: calc2). No uninterruptable |
+| srvst 21 `0x5c3350` (check `0x5c3300`), srvdo 58 `0x5c56c0` (life `0x6538a0`, percent `0x483360`, pet `0x575d90`) | Revive | one draw on the **corpse's** seed: `roll(maxHP - minHP + 1) + minHP` from monstats/monlvl at the corpse's level (expansion L- columns) | skill level 0 returns 0 (`0x5c56ff`); maxhp (stat 7) is set before hitpoints (6), both for the roll and after the percent; the corpse rises (`0x5c5430`), gets AI, owner and alignment (`0x5c55c0`), then its node and collision (`0x5b1900`, `0x649ca0`); class 3 (Paladin in 1.14d's numbering) pays a life cost (`0x5c2ff0`); debuff check `0x56e2f0` |
+| srvdo 75 `0x5d89b0` (corpse test `0x645590`), missile hit 26 `0x5ab8d0`, 27 `0x5aba00` | Grim Ward (start is Find Potion's srvst 33) | none | the ward goes on a free spot of size 2, mask 0x1000, near the corpse; the missile by monstats2 size; srvdo 75 does not test corpse_noselect (srvst 33 refuses a used corpse) |
+| srvdo 123 `0x5c8080`, missile do 28 `0x5afb80`, hit 51 `0x5ac870` | Volcano | do: one `roll(256)`, kept as target x; missile do, per spew frame: seed reset to `{target x, 666}`, x and y `roll(2r + 1) - r`, the new low word kept | the point must be free (mask 0x5); unit message `0x571aa0` to clients; the lob height (Param5) is client-only |
+| srvdo 124 `0x5c8190` | Armageddon, Hurricane | one `roll(0x10000)`, kept in the entry's param 1 | the aurastate list lasts max(auralencalc, 1) with a RemoveState event at its end (`0x5c82f0`); an ActiveState timer at Param4 frames |
+| srvdo 145 `0x5c8380` | Hurricane's tick (states.txt srvactivefunc) | physical roll, then elemental, once per tick outside town | any failure deletes the skill's ActiveState timers; in town 0, timer kept |
+| srvdo 146 `0x5c8520`, missile hit 56 `0x5acc50` | Armageddon's tick and rock | tick: seed reset to `{param 1, 666}`, `roll(1000000)` as the next param 1, then up to five tries of x and y `roll(2R + 1) - R`; hit: none | a try needs line of sight (mask 0x805), a room and no player collision; rock radius sHitPar1, else aurarangecalc |
+| srvdo 38 `0x5d3e80` | Blades of Ice / Fists of Fire, two charges | the swing's hit frame, then physical and elemental | area at the target point within prgcalc2 (else aurarangecalc), War Cry's damage callback; no point: 0 |
+| srvdo 39 `0x5d3f90` | Blades of Ice / Fists of Fire, three charges | one caster step before any test; local seed `{that low word, 666}`: r squared tries of x then y `r - roll(2r)` | srvmissilec only inside the disc and in a room; 1.14d does not cap r |
+| srvdo 40 `0x5d5010` | Royal Strike, one charge (meteor) | none | the charge-up missile at the point |
+| srvdo 41 `0x5d5080`, missile do 35 `0x5b0640` | Royal Strike, three charges (chaos ice) | do: one caster step; local seed `{low word, 666}`, x then y `step % 40 - 20` per missile; missile do every Param1 frames: seed reset to `{target x, 666}`, one step | (0, 0) becomes (20, 0); the missile adds a quarter of the offset's perpendicular, one way on an even step and the other on an odd one (truncated toward zero) |
+| srvdo 143 `0x5d4f40` (ring `0x5d4870`, spiral `0x5d4680`) | Royal Strike two charges (chain lightning), Fists of Fire one charge | one caster step; local seed `{low word, 666}`, one step per ring missile | ring k = 0, stride, ... below 64 at radius 30, spiral init; a stride <= 0 loops forever in 1.14d; Fists of Fire has no srvmissilea, so its release is the caster step alone |
+| srvst 2 `0x56caf0` (+ srvdo 2) | Kick | none | a fixed blow MinDam << HitShift, result 9, hit flags 2, hit class 1, source damage 0x80 |
+| srvst 3 `0x56cba0`, srvdo 4 `0x56cc20` | Unsummon | none | target must be the player caster's pet with pettype unsummon; the do drops the pet link, sends the 0x7a pet message, removes the monster at frame end |
+| srvst 65 `0x56cab0`, srvdo 3 `0x56f460`, 5 `0x56f550` | Throw, Left Hand Throw | missile creation's | the start checks ammunition; a potion flies as a lob; the item's to-hit and damage percent go on the missile |
+| srvst 41 `0x5da540`, srvdo 78 `0x5da7e0` (path `0x5d9f70`, landing `0x5da120`, Sand Leaper run `0x5da020`) | Leap Attack's flight and landing | none | below |
+| missile hit 47 `0x5ac550`, hit 14 `0x5aabb0` (burst `0x5aaa90`) | Molten Boulder's and Meteor's fire | none of their own | HitSubMissile1 at every sHitPar2-th (at least 1) of **18 fixed offsets** (x `0x6e2550`, y `0x6e2598`, no formula; D2R's copy at `0x1d1b370` / `0x1d1b3c0`, read by `0x467420`, not compared value by value); Molten Boulder's pieces last the impact radius in frames, Meteor's Param3 + (level - 1) x Param4 |
+| srvdo 147 `0x5d2b20` (dispatch `0x56d790`, owner `0x552fd0`) | states.txt srvactivefunc of "attached" (Imp) | none | only with unit flags_ex 0x400 (StoreOwnerInfo; set by `0x621c30`, cleared by `0x621ce0` without owner) the unit's path moves onto its owner's position (path flag 8 when the subtiles differ, 1 when the rooms differ); returns 1 either way. The attach is srvdo 129 `0x5d1ab0` -> `0x5d18e0`: an imp (base 0x1ec) on a host of base 0x1b3 / 0x1b9, each the other's owner, the imp's ActiveState timers reset and one fired at once (`0x541650`) |
+
+**Finishing-move releases** are not srvdofunc values but a charge-up's srvprgfunc1..3, run through the srvdo table
+with the charge count in aurastat1: Fists of Fire 143 / 38 / 39, Blades of Ice - / 38 / 39, Royal Strike 40 / 143 /
+41.
+
+**Moving skills (run flags).** Whirlwind, Charge and the leaps keep run flags in the skill entry: flag 1 = running,
+2 = the path has ended. While flag 1 is set, `PLRMODE_UpdateSkill` (`0x580460`) steps the path once per mode-change
+event of the skill mode and calls the do on every such event whatever its animation flag; it only revalidates the
+path's target (`0x553490` drops a unit no longer in the game), so a target that leaves does not stop the do. The do
+rewinds the animation to keep the mode running (Whirlwind to frame 3, see
+[movement-modes.md](movement-modes.md#75-skill-loops-and-the-rewind-114d)); when the path reports its end, flag 2
+goes on and the next do ends the skill. Whirlwind's row 7 do returns 0. The skill_move state the start sets is cleared
+only by the **client's** 0xA5 handler (`0x45d6b0`), never by the server. A replacement that sets flag 1 without
+stepping the path leaves the uninterruptable state on and the unit can no longer act.
+
+**Leap Attack** (1.14d). srvst 41 keeps the landing in param 0..1, reserves it with the unit's pattern and 0x80, and
+sets run flags 0x1080 (monsters too; D2R starts a monster's path at once). The landing is SKILL_FindTeleportPosition
+(`0x645ca0`): none for a target in melee reach; two subtiles past the aim along caster -> aim; a colliding landing
+(0x1c09) takes a free spot near the aim; then line of sight (mask 0x804) and no town room (`0x645c60`). srvdo 78 with
+flag 0x80 lays the path (`0x5d9f70`: footprint lifted, collision pattern 0, path type 9 Leap, straight, at the run
+velocity) and sets 0x1101 before the landing test; 1.14d returns 1 whatever the path call does. Each later srvdo 78
+(flag 0x100) compares the position with the landing, which must match **exactly** on both axes: off it, a player's
+animation goes back to frame 10, a monster's sequence frame to 0 (Sand Leaper 8; Ancient Barbarian 12 within 2,
+else 10) with its frame count one frame on; on it, the landing (`0x5da120`) frees the 0x80 reservation (0x100 for a
+monster, whose 0x80 stays), restores collision type 0x80 / 0x100, pattern 0x1c09 / 0x3c01, path type 7 / 2, sets
+run flags 0x200, and a Sand Leaper runs on to `3 x landing - 2 x target`. Both landing branches clear uninterruptable
+(`0x5544b0` at `0x5da2c7`) before the 0xA5 skill stop (`0x571b70`); then AcquireNextTarget (`0x5da490`, no alive
+check) and a rewind to frame 16. **1.14d sends no missile ring on landing**; D2R's 64-missile ring for a landing
+player is a D2R addition. A death blow in flight does not stop the landing (see the death delay in
+[combat-formulas.md](combat-formulas.md#5-landing-the-hit)). Leap (srvdo 77, `0x5da370`) shares this path and landing.
 
 ## 7. Missile hit handler (`0x4639a0`)
 
@@ -201,6 +260,17 @@ D2R's order, **static only**:
 6. The hit slot; with result bit 2: the damage roll (`0x465420`), the srvdmgfunc slot, the hit itself (`0x462e40`,
    [combat-formulas.md](combat-formulas.md#5-landing-the-hit)), then a monster target that is not a hireling gets the
    missile's stat 120 added to its defense (floor 0).
+
+**Classic 1.14d for comparison** (1.14d addresses):
+
+- **LastCollide** (arrows, javelins, the bolts, Bone Spear, Holy Bolt): the unit-find callback skips the unit the
+  missile hit last and searches on (`0x5a8730`); the hit handler (`0x5adf10`) remembers the target before the
+  collide-mode test, in the missile's owner pair (SetOwner `0x64a400`, CheckUnitIfOwner `0x64a470`). A missile that
+  flies on hits a unit once while passing, and two units on one subtile in turn.
+- **NextHit** (`0x5adb00`): justhit goes on the target for NextDelay frames and the target's RemoveState event (type
+  12) is set at that frame (SetEvent `0x5417d0`). The event runs after the missiles of its frame
+  (EVENT_DispatchAllTimers `0x5414d0`, missiles queue first), so a missile that stays on the unit hits it every
+  **NextDelay + 1** frames (Volcano: every 11).
 
 Around the damage stage D2R switches the owner's current skill to the missile's skill (`0x3e2b652`). The frame
 dispatcher `0x466ce0` kills SrcTown missiles when the owner is in town and other missiles in town unless Town; a do
@@ -227,6 +297,16 @@ thousands of live cases), **static only** otherwise.
 So a second, stronger open wound only restarts the 200 frames and keeps the first wound's regen loss (classic rewrote
 it). Remove callbacks on state lists (Inferno's end, a timed-out shapeshift, Confuse, Conversion, Blade Fury,
 `0x436240`) were not read.
+
+**When a timed list ends** (1.14d, addresses 1.14d's): a monster's timed lists are freed only when its RemoveState
+event (type 12) fires (monster event slot `0x5a7ef0` -> RemoveStatListAfterTimeout `0x627460`); a player's expire in
+the vitals pass. So every path that puts on or moves a timed list also sets that event at the list's end frame: the
+state helper (SetStateWithExpiryTime `0x56e970`, new or refreshed), srvdo 2's auratargetstate (`0x56f1f0`), missile
+hit 16 (`0x5aae10`), Rabies (`0x5c7b10`), Frenzy (`0x5d8d9e`), Berserk (`0x5d99e5`), the charge-ups (`0x5d3403`),
+Blade Fury and Inferno on the new and the moved list (`0x5d6a99` / `0x5d6af8`, `0x5c8eff` / `0x5c8f6f`), a timed
+shape (`0x5c6fe0`), Feral Rage / Maul (`0x5c7926`), Armageddon / Hurricane (`0x5c82f0`), Conversion (`0x5d04dd`) and
+NextHit's justhit (`0x5adb00`). Setting it (SetEventInternal `0x5416b0`) replaces only the unit's type-12 timer. A
+plugin that adds a timed list to a monster without that event leaves the stats on for good.
 
 **Corpses**: the selection check is `0x33fbe0` (dead mode, no undead-mask state, monstats2 CorpseSel). It has no
 Velocity test, so a corpse Raise refuses can still be exploded. Corpse Explosion marks the corpse used.

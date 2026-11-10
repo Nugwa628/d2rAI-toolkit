@@ -275,7 +275,14 @@ The full message picture is in [network-messages.md](network-messages.md).
   facing (medium).
 - **Waypoints** are preset objects in the `.ds1` (or placed by the outdoor pass or a waypoint substitution), sent
   as `0x51`. Their init (objects `InitFn` 17) sets mode 2 in a town and 0 elsewhere; torches (`InitFn` 8) are mode
-  2, braziers (`InitFn` 14) mode 1. Touching a field waypoint (`0x58fe00`) sets its mode 0 -> 1.
+  2, braziers (`InitFn` 14) mode 1. Touching a field waypoint (`0x58fe00`) sets its mode 0 -> 1. There are 39
+  waypoints (ids 0-38, Acts I-V); map them through levels.txt `Waypoint`, never "waypoint id = level id".
+- **An operate out of reach** (1.14d object interact `0x548b00`, static only): an object within unit distance 50 but
+  out of interact range, or with a closed door or missile barrier on the line (mask `0x804`, each end moved towards
+  the other by its unit's size, capped at 2), is not refused: the player walks to it and the operate runs again at
+  the walk's end (`0x580c20`), as often as it takes. A wrong mode is refused before the range test. The client may
+  send its `0x41` a subtile before the server's player arrives, so a server that only refuses out-of-range touches
+  rejects real clicks on the town waypoint. For D2R's own checks see [objects.md](objects.md) section 4.
 - **Movement checks** (server, build 93847; move handlers `0x4f3c70`, `0x4f6060`, `0x4fe1f0`, medium): a walk
   target more than 50 subtiles from the server position on either axis is dropped; a client position 46 or more
   away (unit distance `(2 * max + min) / 2`, `0x325370`) drops the move silently; more than 15 forces a resync
@@ -368,7 +375,7 @@ reuses the act and its clock.
    ticks, eclipse}` with the **destination act's** clock;
 4. nine `0x07`;
 5. the hireling first: `0xac` (same guid), `0xa8`, `0x67`;
-6. Warriv leg: `0x28` type 6 (quest record) and `0x61 {2}` (the Act II cinematic, first trip only; not repeated on a
+6. Warriv leg: `0x28` type 6 (the player's quest record, GUID field 0) and `0x61 {2}` (the Act II cinematic, first trip only; not repeated on a
    waypoint return); waypoint leg: `0x0d` to the waypoint + (2, 2);
 7. the new rooms' units (NPC `0xac` + `0xa8` + `0x6d`, objects `0x51`, warp tiles `0x09`);
 8. `0x15` for the hireling, then for the player (Act II start: the act start + (1, 1); waypoint: the waypoint
@@ -377,6 +384,29 @@ reuses the act and its clock.
 
 After `0x04` the client sends `0x43 {1, hireling}` (it drops its hireling); the host answers `0x2d` and a `0x15` one
 subtile away.
+
+- **`0x43` UNITREMOVEDBYCLIENT** is 9 bytes, `{u32 unit type, u32 guid}`, a D2R body. The client sends it for its own
+  hireling (type 1) after **every** level change: waypoints and town respawns too, not only act changes (observed).
+  The D2R host's answer puts `0x15` one subtile south of the hireling; its handler (`0x4b94d0`, build 93847) was not
+  read. 1.14d's slot for this id is a no-op (`0x54b920`, shared with `0x2e`, `0x42`, `0x64`, `0x65`) that passes the
+  can-interrupt gate. A host that does not answer it saw no client effect: the hireling re-sent with `0xac` on the
+  level change is drawn, follows and fights.
+- **Tyrael's trip and Harrogath's portal** change act from a quest; their order (the act change first, then the
+  quest's own `0x28` and `0x5d`) is in [quests-acts.md](quests-acts.md) section 7. The act change (1.14d `0x597310`)
+  also runs Cain's "skip to Act II" step for the traveller (section 4 there).
+- **Act IV start**: the fortress town has one special tile, index 11, and none of 0-4. The act-start lookup takes the
+  first tile when none matches (1.14d `0x66b2b0`), so joins and act changes into Act IV start at tile 11 (medium).
+- **The act at a join**: the save's per-difficulty town byte holds `act | 0x80` for the current difficulty
+  (the other difficulties' bytes lose bit 7; classic's writer). Classic's load reads the byte alone; an act of 5 or more joins in Act I. Whether D2R also
+  checks the act-done quest words (7, 15, 23, 28, [quests-acts.md](quests-acts.md) section 1) is not settled.
+
+**Join and respawn spot** (1.14d, matches D2R captures): `CLIENTS_SpawnPlayer` (`0x5394a0`) takes
+`DUNGEON_FindActSpawnLocationEx` (`0x61b060`): the act's start tile + 3, then a free-spot search with mask `0x1c09`
+(wall, no-player, object, door, no-path). A player's own footprint is `0x80` (COLLIDE_PLAYER), which that mask leaves
+out, so **every joiner lands on the same subtile** (two D2R players joined and respawned on one spot). The resurrect
+(`LEVEL_WarpUnit` to the act's town) uses the same point and mask. Only an act change searches with `0x1c89`, which
+adds `0x80`. Saved corpses are placed from the same point with mask `0x9c19` (adds COLLIDE_CORPSE `0x8000`), but a
+placed saved corpse writes no collision (it has no room yet), so several corpses stack too.
 
 **Per-act clock**: Act I runs from game creation (ticks = frame - 1); Act II starts at 10240 when built and advances
 one tick a frame; the periodic `0x53` (every 2176 frames) uses the client's current act. Acts III-V start values were
@@ -417,6 +447,7 @@ the table at `0x239b980`) gated by global quest bits, not by the `.ds1`.
 | `0x58f680` | portal operate (OperateFn 15) | town and red portals do not go through `0x491ff0` |
 | `0x46fa70` / `0x470ae0` | town portal cast: make pair / retire old pair and link | |
 | `0x4adbb0` | C->S `0x40` warp handler | 5-subtile reach |
+| `0x4b94d0` | C->S `0x43` handler (client dropped its hireling) | not read; answers `0x2d` + `0x15` |
 | `0x129930` / `0x129b80` | client `0x03` / `0x07` handlers | client act at `*0x2a233b0` (server acts: vector at `game+0x190`) |
 
 ## 9. Pitfalls for mods that add or change areas

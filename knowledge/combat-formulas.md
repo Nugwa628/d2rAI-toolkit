@@ -165,6 +165,19 @@ successful hit; then leech, absorbed life, life/mana/stamina loss (life below on
 and uniques: one roll, 90% shorter), cold (a defender `% 100 < 20` **shatter** roll on every cold hit), freeze,
 poison, burn; then events 10 and 9.
 
+- **Room and town gate** (classic 1.14d DAMAGE_ApplyDamageToUnit `0x57c6c0`; 1.14d address, **classic**): a victim
+  with no room takes no hit at all (SuccessfulHit and WillDie cleared, whoever the attacker); a victim in a town room
+  takes nothing unless the attacker is a monster with monstats inTown (flag 10), and then WillDie is cleared while
+  SuccessfulHit stays. There is no invulnerable state of its own: before the town gate the can-be-attacked unit
+  flags clear the hit, after it only the killable flag and a dying (mode 0) victim stop the damage.
+- **Death delay** (1.14d SUNIT_SetUninterruptable `0x5544b0`, **classic**): a death blow on a unit in the
+  uninterruptable state (54: Whirlwind, Leap Attack in flight) leaves state 92 (DeathDelay) and 0 life. Whatever
+  clears state 54 later lets the death through: 92 goes, the unit's last attacker (`0x553010`) lands a block carrying
+  only WillDie (`0x57cee0`: a player's death mode, a monster's kill), or with no last attacker KillMonster runs with no
+  killer (`0x57ccb0`). A leaper dies at its landing; a player whose spin ends at its path end dies at once, the body
+  appearing without the death animation. For a monster the function also deletes its AiThink timers, both when the
+  state goes on (`0x55455a`) and when it goes off (compare D2R's own AiThink rule in
+  [movement-modes.md](movement-modes.md#8-the-event-queue)).
 - **Leech** (`0x450c90`): one coin-flip draw when a player has both life and mana leech.
 - **Crushing blow** (events.txt function 16, `0x583150`): `% 100 < stat 136`. Divisor: players and hirelings **10**;
   monsters **4**, bosses and superuniques **8**, plus the players-count HP bonus percent; missiles double the
@@ -198,6 +211,11 @@ front. The hit frame `0x44b2b0` takes the **first** (newest) record of the pair;
 runs the range check (`offset + 3` monster, `+ 1` player), ExecuteEvents on a hit, the overlay, the hit class,
 durability, events 7 and 3, thorns, and the reaction `0x44a9b0`. A dead attacker (mode 0) at either check ends the
 hit **without freeing** its records; every other path, out of range included, frees all records of the pair.
+Classic 1.14d also frees **all** of a unit's stored blocks before each mode it starts (FreeCombat `0x57c980` from
+FreeCombatAndChangeAnimMode `0x553570`; 1.14d addresses), so a swing cut off before its hit frame never lands with a
+later one; monster and player removal free the list too. Skills that swing apart from their hit frame (Whirlwind,
+Charge, Leap Attack's strike, Kick) go through the same store: result flags `0x44b720`, AllocCombat `0x44b600`, then
+the hit frame with range offset 0.
 Monster and player removal frees the whole list. There is no cap on the list. **read**.
 
 **Death drop**: the killing hit frame runs the drop (`0x4479a0`) at once, on the dying monster's seed, before anything
@@ -320,6 +338,13 @@ state 12), 2 no charges, 8 delay, 4 finisher without enough progressive charges.
 raised to `minmana << 8`; 8 fraction bits. The "enough mana" test (`0x340900`) uses the same sum **without** the
 minmana floor; blood mana (state 114) pays with life. Mana is charged after `srvstfunc` succeeds, or at the do with
 `usemanaondo`.
+
+**Free casts** (classic 1.14d has the same order: check `0x56c160` on the raw cost, start `0x56f640`, missile
+`0x56f7f0`, cost with the floor `0x56bfe0`; addresses 1.14d's). Two kinds of cast fire without paying, and the client
+expects them: a skill whose minmana floor is above its raw cost, cast with mana between the two (the check passes, the
+debit is short of the floored cost and takes nothing); and a skill paid at the do (no srvst function, no
+`usemanaondo`) whose caster lost mana between the start and the attack frame (the do does not check again). With
+`usemanaondo` the do re-checks.
 
 **Delays**: global delay (`0x439470`) and cooldown (`0x439500`) formulas are raised to the class's charstats
 **`MinimumCastingDelay`** (a D2R column). Cooldowns are per skill: state 185 with stat 359 layered by skill id, so one

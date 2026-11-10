@@ -339,6 +339,8 @@ in an area. It's also good reading for human modders.
 | [skills-missiles.md](knowledge/skills-missiles.md) | Skill start/do per slot, missile hits, timed states, mercenary AI |
 | [monster-ai.md](knowledge/monster-ai.md) | The AI tick, target search, common AIs and their aip values, monster init, player corpses |
 | [objects.md](knowledge/objects.md) | Chests, shrines, wells, doors, traps and portals: populate, init and operate functions |
+| [quests-acts.md](knowledge/quests-acts.md) | Quests across the five acts: quest records and flags, the shared quest machinery, each quest's triggers and messages, the end of game |
+| [hirelings.md](knowledge/hirelings.md) | Mercenaries outside combat: hire list and quote, hire, death, resurrect, items, save and messages |
 | [movement-modes.md](knowledge/movement-modes.md) | Collision, pathfinding, line of sight, speed, unit modes, animation timing, the event queue |
 | [units-stats.md](knowledge/units-stats.md) | Unit header and ids, seed draw order, stat lists, states, party records, timing |
 | [network-messages.md](knowledge/network-messages.md) | Game messages a plugin author sees when debugging: ids, join order, item actions, weapon swap |

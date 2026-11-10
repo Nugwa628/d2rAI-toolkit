@@ -134,6 +134,8 @@ Each entry: the rule, what happens when a mod breaks it, and the fix. "Plugin" m
 | Mercenary revive price `(level^2 / 2) x 15`, capped by hireling columns (`0x3c1ad0`) | | Hook it (hooked in game in one port) |
 | Death penalty: gold penalty, then (level > 1, killed by a monster or another player) `(exp[L] - exp[L-1]) * pct / 100` experience, never below `exp[L-1]` (`0x424ac0`) | | |
 | Games are destroyed 300 s after the last client leaves (`0x406e40`); the server frame runs at 25 Hz (`game+0x170`) | Per-game plugin state outlives the game | Clear it in a game-end hook (`0x486be0`) |
+| Joining and respawning players all land on one spot: the act's start tile + 3 through a free-spot search whose mask (`0x1c09`) leaves out the player footprint `0x80` (1.14d `0x5394a0` / `0x61b060`, matched by D2R captures). Only an act change uses `0x1c89`, which includes it. Saved corpses pile on one subtile too | Players and corpses stack in town | Expected; spread them in a plugin if needed ([saves.md](saves.md#when-the-game-writes-a-save)) |
+| monstats2 `SizeX` is a signed byte (1.14d `0x620510`): 128-255 is a negative size | The monster is "in melee range" from far away, distance weighting returns 0, Blood Raven's leash home never fires | Keep `SizeX` 0-127 ([tables.md](tables.md)) |
 | A visible chat line (packet 0x26, types 1, 4, 5) that arrives while an NPC's quest speech scrolls stops the speech and the menu never opens (observed in game) | NPC frozen after a plugin notice | Send notices once the NPC menu is open, or use type 0 for hidden data |
 ## Strings
 
@@ -174,3 +176,5 @@ Each entry: the rule, what happens when a mod breaks it, and the fix. "Plugin" m
 |---|---|---|
 | `.d2s` checksum + size, and D2RLoader's `.d2rl` sidecar hashes must match | Character silently disappears from (or greys out in) character select | Update checksum, size, both hashes ([saves.md](saves.md)) |
 | Extended save format stores wider IDs; hand-built items are rejected | Character disappears even with correct checksums | Never hand-build items; use D2RLoader's debug Item Spawner |
+| The host saves **every** player together: on a 30 s timer (`game+0x5800`, strictly more than 30000 ms), at any player's leave (`0x405f1c`), and on forced saves (`0x406e10`: NPC buy, sale, identify, Akara's decipher, a hardcore death) that restart the timer. No dirty check | Plugin state written into a save between two writes is lost on a crash; a per-player save hook fires for everyone | Hook the save walk `0x41e0d0`, not one caller ([saves.md](saves.md#when-the-game-writes-a-save)) |
+| The save's town byte holds the act per difficulty; classic loads a byte of 5 or more, or Act V in a non-expansion game, as Act I | An edited or new act number silently starts the character in Act I | Keep act bytes 0-4 |

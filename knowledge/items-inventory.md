@@ -132,6 +132,10 @@ first. The guid follows classic's rules:
   takes the guid unless the current main weapon stays: it stays when it is not a throwing potion (`tpot`) or the new
   one is one too, and the new one enters the left arm or is a throwing potion beside a non-potion;
 - removal (`0x389f00`): the leaving weapon gives the guid up and a usable item of any type in the other arm takes it.
+  A non-weapon leaving does not run this rule, but the inventory remover (`0x38ba30`, classic `INVENTORY_RemoveItem`)
+  clears a guid that names the item it takes out, whatever its type, so a shield that took the guid gives it up when
+  it goes. The engine removes through it for the merc (`0x51`) and on every player removal, so the guid is always
+  none or an item in an arm.
 
 The mover's commit (`0x471e90`) runs removal for each item leaving an arm, insert for each entering, then (unless
 dead) insert again for the new right then left arm items. A loaded character starts with no guid; the first refresh
@@ -158,7 +162,10 @@ Nothing turns off again in the same refresh. The refresh (`0x34dbe0`) only flags
 stat messages (0x47/0x48). A gold pick-up runs no refresh.
 
 **Stash reach**: there is no stash-open flag. Every move recomputes (`0x46c690`, `0x325200`) whether a stash object
-(type 2, class `0x10b`) in a near room is within `0x33` of the player.
+(type 2, class `0x10b`) in a near room is within `0x33` of the player. So a player who never operated the stash can
+bank gold (C->S `0x27`, `0x4ba580`) standing next to it, and one who walked away cannot. An accepted `0x27` sends the
+stash gold as stat 15 (`0x1d`-`0x1f`); the carried gold goes out with the vitals pass. Opening the stash is in
+[objects.md](objects.md) section 4.8.
 
 ## 7. Inventory requests (C->S, controller paths included)
 
@@ -235,7 +242,7 @@ Each handler answers 0x2a `{0, result, guid, carried gold}` (static only):
 | Handler | Refusal -> result | Success |
 |-|-|-|
 | buy `0x53d850` | id not in this NPC's store (or this player's gamble grid), or quote != price or 0 -> 7; gold + stash too low or negative -> 12; no backpack room -> 10 | 0: pay (carried gold first, then stash, `0x5416d0`), item to backpack |
-| sell `0x53f1a0` | not a backpack-grid item, or a quest item (flag `0x1000`, `quest` column, type `ques`) -> 9; quote != sell price or 0 -> 9 | 1: credit at most `level * 10000 - carried` (the rest is lost) |
+| sell `0x53f1a0` | the player holds no item of that id -> 11 (1.14d `AlreadyHoldingItem`; the store sees the grid, the body and the cursor, so a belt, cube or stash item counts as not held); held but not on the grid or the cursor (equipped), or a quest item (flag `0x1000`, `quest` column, type `ques`) -> 9; the message's location kind is not where the item is (0 backpack grid, 4 cursor; 1.14d `SUNITNPC_SellItem` compares the item's mode) -> 9; quote != sell price or 0 -> 9 | 1: credit at most `level * 10000 - carried` (the rest is lost) |
 | repair `0x53fe00`, all (item -1) | quote != sum of body repair prices -> 9; too little gold -> 12 | 2 |
 | repair, one item | quote 0 -> 12; not the player's, not repairable, nothing to repair -> 9 | 2; a partial repair when quote = carried gold, the item is not broken and gold > 0 |
 
@@ -246,7 +253,11 @@ Partial repair: `ratio = ((u64)price << 10) / (max - cur)` (classic did this in 
 **What a sale relists** (`0x38c8d0`): the sold unit itself, same id, via 0x9c 0x0b on this NPC's store page;
 identified, full durability and quantity. Destroyed instead: Cracked low quality; broken, personalized or ethereal;
 type `play`; filled sockets; a `carry1` unique; outside Normal `hp4 hp5 mp4 mp5`; this NPC's permanent store item;
-no room. The seller gets 0x2a, 0x9d 5, then the gold. The handler also checks the client's page and cell against
+no room. The seller gets the item's leave first (0x22 for a scroll or tome, then 0x9d 5 with item flag `0x20`, or
+0x42 for a cursor item; then 0x47/0x48), then 0x2a, then the 0x9c 0x0b and the gold (1.14d D2GAME_STORES_SellItem
+`0x579510`; the order after 0x2a is inferred). Without flag `0x20` the client takes 0x9d 5 for a pick-up and keeps the
+sold item on its cursor (observed). Buy, sale and identify each force a save when they go through
+([saves.md](saves.md#when-the-game-writes-a-save)). The handler also checks the client's page and cell against
 the spot `0x38c8d0` picks (static only).
 
 **Store listing**: one 0x9c 0x0b (add to shop) per item, record at its store cell with page = store page + 1;
