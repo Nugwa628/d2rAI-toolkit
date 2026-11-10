@@ -256,7 +256,7 @@ Event 1, end of animation: mode 1 -> 2 when `Mode2` is set, written directly (no
 (dispatcher `0x516370`, switched on the class: Cain's portal, the harem blocker, the cage and others) (high for the
 numbering, medium for the quest cases).
 
-### 4.8 Waypoints and portals as objects
+### 4.8 Waypoints, portals and the stash as objects
 
 **The stash** (class 267 = `0x10b`, OperateFn 32; 1.14d `0x564cd0`): only in town, from a player in town. It
 becomes the player's interact unit and the player gets S->C `0x77 0x10` (open the stash panel; D2R host captures send
