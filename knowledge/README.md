@@ -35,6 +35,7 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [d2rloader.md](d2rloader.md) | D2RLoader facts and traps: default mod, the cache-building first start, other plugins, version checks, its files |
 | [porting-classic-mods.md](porting-classic-mods.md) | Porting a classic 1.13c-era mod: inventory, table-by-table conversion, ids that must not move, function numbers, events, art order |
 | [plugin-techniques.md](plugin-techniques.md) | Plugin feature recipes: belt refill, buff HUD from tables and the 25 fps clock, weapon swap, waypoint UI from actinfo, running many clients (shared Settings.json, RAM) |
+| [sdk-gaps.md](sdk-gaps.md) | For the D2RLoader SDK author: every place plugins still hook or patch the game (build 93847 RVAs), what breaks, and the SDK service that would replace each patch, by priority (checked against PluginSDK 0.4.0) |
 | [modkit-ops.md](modkit-ops.md) | The modkit's patch operations (JSON ops applied by `modkit build`) |
 
 ## Rules that apply to every file

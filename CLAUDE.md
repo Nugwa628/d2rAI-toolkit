@@ -19,7 +19,9 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
   `knowledge/skills-missiles.md`; monster AI and corpses in `knowledge/monster-ai.md`; world objects in
   `knowledge/objects.md`; quests per act in `knowledge/quests-acts.md`; mercenaries in `knowledge/hirelings.md`;
   pathing and unit modes in `knowledge/movement-modes.md`; units and stats in
-  `knowledge/units-stats.md`; plugin recipes in `knowledge/plugin-techniques.md`.
+  `knowledge/units-stats.md`; plugin recipes in `knowledge/plugin-techniques.md`; what the D2RLoader SDK does not
+  cover yet (each place a plugin still has to patch, and the service that would replace it) in
+  `knowledge/sdk-gaps.md`.
 - `docs/`: how to run a project. `docs/ai-workflow.md` is the method for a mod built with AI agents: a coordinator
   plus parallel lanes, model choice, game slots, the bug list, releases, safety.
 - `templates/`: fill-in files for a new project: coordinator prompt, lane rules, lane prompt, `bugs.md`, `PLAN.md`,
