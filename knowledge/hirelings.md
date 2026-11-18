@@ -226,9 +226,16 @@ The 0x7f life percent is whole points, `(life >> 8) * 100 / (max >> 8)` (`0x34a2
 - Per-element resist columns and resurrect price columns in the row; HiringMaxLevelDifference 1 for expansion rows.
 - The merc's damage lives in 185/186 (classic 23/24).
 - The 0x51 take-out clears the weapon guid itself.
+- The AI tells the merc kinds apart by monstats aip1-3 (range type, basic-attack skill slot, basic-attack mode), not
+  by class id; act5hire2 swings A2; the follow helper tries 8 directions (classic 7); the skill choice skips a buff
+  nobody near lacks and a skill whose target state the target already has
+  ([monster-ai.md](monster-ai.md#7-hirelings-and-summons)).
 
 ## 11. Not verified
 
+- The merc's Combat and skill choice were read in the binary but not captured live; only the follow part of its think
+  was replayed against think logs.
+- What brings an owner-less merc (AI special state 5 or 6) back to the hireling state 4.
 - A merc killed by monsters while its owner lives (the 0x9b-then-0x7a order) and another client's view of a merc's
   death were not captured.
 - Whether the hire's bind (`0x544ac0`) sends the old merc's removal in the full or the id-only form.

@@ -14,7 +14,8 @@ knowledge/monsters-spawn.md; level generation and travel: knowledge/map-generati
    `MonStatsEx` (monstats2 row), `MonType`, `AI` (monai.txt name: the behaviour, cannot be invented in data),
    `Code` (graphics token), `Level`/`Level(N)`/`Level(H)`, life `minHP`/`maxHP` (+ `(N)`, `(H)`), `AC`, `Exp`,
    attacks `A1MinD`/`A1MaxD`/`A1TH`, resistances `ResDm`/`ResMa`/`ResFi`/`ResLi`/`ResCo`/`ResPo`, speed
-   `Velocity`/`Run`, `aip1-8` (AI parameters, meaning per AI), `Skill1-8` + `Sk1mode` (monmode code or a monseq
+   `Velocity`/`Run`, `aip1-8` (AI parameters, meaning per AI: look the AI up in
+   knowledge/monster-ai-routines.md before you set them), `Skill1-8` + `Sk1mode` (monmode code or a monseq
    sequence) + `Sk1lvl`, `MissA1`.. (missiles per mode), treasure classes, `minion1/2`, `PartyMin/Max`,
    `MinGrp/MaxGrp`.
 2. **monstats2.txt**: graphics: which body parts and modes exist (`HD`..`S8`, `mDT`..`mRN` flags), sizes, light,
@@ -35,7 +36,8 @@ Colour variations: monstats2 / `Utrans`-style palette shifts only affect classic
 ## Monster skills
 Monsters use skills.txt rows (often monster-only skills with no class): give the monster `Skill1` = skill name,
 `Sk1mode` = the mode that casts it (`S1`, `A2`, `SC`, or a monseq sequence name), `Sk1lvl`. The AI decides when to
-use skill slots (see the AI's aip meanings); pick an AI whose vanilla users cast skills the same way.
+use skill slots (see the AI's aip meanings in knowledge/monster-ai-routines.md, which lists what every AI routine
+does and what each aip value means); pick an AI whose vanilla users cast skills the same way.
 
 ## Where monsters spawn (levels.txt)
 `mon1-25` (normal), `nmon1-25` (nightmare/hell), `umon1-25` (unique candidates), `MonLvl`/`MonLvl(N)`/`MonLvl(H)`

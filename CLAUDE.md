@@ -16,7 +16,8 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
   level generation and travel in `knowledge/map-generation.md`; client/server messages in
   `knowledge/network-messages.md`; the item record in `knowledge/item-format.md`. Deeper topic files: drops,
   inventory and vendors in `knowledge/items-inventory.md`; skill functions and missiles in
-  `knowledge/skills-missiles.md`; monster AI and corpses in `knowledge/monster-ai.md`; world objects in
+  `knowledge/skills-missiles.md`; monster AI and corpses in `knowledge/monster-ai.md`; every AI routine and its
+  aip values in `knowledge/monster-ai-routines.md`; world objects in
   `knowledge/objects.md`; quests per act in `knowledge/quests-acts.md`; mercenaries in `knowledge/hirelings.md`;
   pathing and unit modes in `knowledge/movement-modes.md`; units and stats in
   `knowledge/units-stats.md`; plugin recipes in `knowledge/plugin-techniques.md`; what the D2RLoader SDK does not

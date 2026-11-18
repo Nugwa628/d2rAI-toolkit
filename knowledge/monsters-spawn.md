@@ -194,8 +194,11 @@ The short version; the tick step by step, target search, think scheduling and pe
   (boss sighting message once within 20; heal-and-teleport when AI flag 0x20 is set; retarget when the approach is
   blocked and levels `MonSpcWalk` > 0), then the AI's own think.
 - **AI table: `0x2396e90`**, indexed by the monstats `AI` column (row byte at monstats +0x52; out of range, 0x9b or
-  more, falls back to entry 0). Entries are 0x20 bytes `{kind, init, think, alt}` (layout read on the special-state
-  table at `0x23981f0`; assumed the same for the base table). Getter: `0x4a36c0(unit, state)`.
+  more, falls back to entry 0). Entries are 0x20 bytes `{kind, init, think, alt}`, the same layout as the
+  special-state table at `0x23981f0` (confirmed on the base table by reading the act boss rows). `kind` picks the
+  target search, `init` runs once when the AI is set, `think` runs every tick, and `alt` is a clean-up think that
+  runs once before another state takes over. An entry with no think gets the Idle think `0x4a3680`. Getter:
+  `0x4a36c0(unit, state)`.
 - **Special AI states** 1-17 (table `0x23981f0`) override the monai row: 1 idle, 4 hireling, 7 revived monster
   (uses the necromancer pet think), 10 Dim Vision, 11 Terror, 12 Taunt, 13 a superunique's tower AI, 16 mounted imp,
   and others. Set with `0x4a2690(game, unit, ctl, state)`; state 0 = back to the monai row. D2R adds a **deferred
@@ -205,9 +208,11 @@ The short version; the tick step by step, target search, think scheduling and pe
   monstats `switchai` clear, uninterruptable, or not attackable. Uniques are not refused by the getter.
 
 Target-search kinds (D2R numbering, renumbered from classic): 0 none (the AI searches itself), 1 find or idle in
-neutral, 2 find (null allowed), 3 new (one user), 5 and 6 = classic 4 and 5. Monsters only see players in the same
-act, not in town, within `aidist` (monstats, per difficulty; 0 means 35), plus the pets and hireling chained behind
-each player.
+neutral, 2 find (null allowed), 3 new (the Vulture only: find or idle without a mode change), 5 and 6 = classic 4 and
+5 (SandMaggot, FrogDemon). Monsters only see players in the same act, not in town, within `aidist` (monstats, per
+difficulty; 0 means 35), plus the pets and hireling chained behind each player. A chained unit skips the act, town and
+death tests and competes on distance alone, which is why a hireling in front of its owner is attacked first
+([monster-ai.md](monster-ai.md) section 3). The act bosses pick their own targets (section 11 there).
 
 ### Hooking one AI from a plugin
 
@@ -231,7 +236,7 @@ each player.
 |-|-|
 | +0x00 | special state (0 = monai row) |
 | +0x08 | current think function |
-| +0x38 | u16 AI flags: 0x08 has seen a target, 0x10 boss sighting done, 0x20 heal/teleport allowed, 0x40 force a collision check |
+| +0x38 | u16 AI flags: 0x01 group leader, 0x02 the lead passes on at death, 0x08 has seen a target, 0x10 boss sighting done, 0x20 heal/teleport allowed, 0x40 force a collision check |
 | +0x3c / +0x40 | leash owner id / type (a minion's boss; -1 = none) |
 | +0x44 / +0x48 / +0x4c | three scratch params of the current AI, zeroed when the state changes |
 | +0x60, +0x68 / +0x6c | game; owner id / type (a minion's boss, a summon's owner); `0x4a53c0(unit)` returns the owner |
@@ -244,6 +249,7 @@ each player.
 - `aidel` (monstats, per difficulty; 0 means 15): frames between the end of a mode and the next think. This is the
   main "how aggressive" knob: lower = thinks more often. A stunned unit waits 45.
 - `aidist` (0 means 35): how far the monster looks for a target.
+- Every AI with every aip value is in [monster-ai-routines.md](monster-ai-routines.md).
 - `Skill1-8` with `Sk1mode-Sk8mode`: AIs use skill slots by index (often slot 0 and 1); an empty slot is -1 and is
   skipped.
 
@@ -287,6 +293,9 @@ The "faster X" stats go through `0x3516c0` with diminishing returns `cap*v/(cap+
   the owner's target node, so hostile monsters target pets exactly like players).
 - Pets are not leashed by the core tick; each pet AI does its own following.
 - A revived monster runs special state 7 (the necromancer pet think, melee variant).
+- The link call refuses a unit that is already in a target node, an owner node index of 8 or more, and a unit that
+  is not a player or monster. A pet spawns with flags 0x42 (no normal mods, no minion party) and the
+  no-treasure-class flag.
 - Every monster's init also gives it its monstats `Skill1-8` that have a level above 0, at `Sk*lvl` plus the
   difficulty's `MonsterSkillBonus` (1.14d monster init, SetSkill / SetSkillMode; unverified in D2R). A unit made as
   a monster for a plugin's pet or hireling needs this, or its AI has no skill to cast or swing.
@@ -335,6 +344,7 @@ The "faster X" stats go through `0x3516c0` with diminishing returns `cap*v/(cap+
 - First think after spawn or room activation (classic: +2 frames when a client enters the room); the D2R callers were
   listed, not mapped.
 - The D2R get-hit / knockback "last mode" rule was taken from classic.
+- What the game links into target node lists 8 and 9, which the evil search and the bosses' scored pick also read.
 - The writer of the minion leash owner (assumed: a group's boss, as in classic).
 - Which units other than teleport-enchanted ones (mod 26) carry AI flag 0x20 (heal and teleport when hurt).
 - The per-mode animation speed branches in `0x350cb4`, and the monseq loader.
