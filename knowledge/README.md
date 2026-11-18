@@ -22,7 +22,8 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [map-generation.md](map-generation.md) | Level generation: seed chain, act and level layout, the tables that drive it, tiles and rooms, room streaming, travel and act change |
 | [items-inventory.md](items-inventory.md) | Death drops (TC choice, ground spot search), item ids and seeds, level requirement, main weapon and inventory requests, vendor stock, restock, prices and transactions |
 | [skills-missiles.md](skills-missiles.md) | Skill start/do and per-slot behaviour (RVAs, seed draws, D2R changes), monster per-attack stat draws, the missile hit handler, timed states and curses, mercenary AI, stats and item giving |
-| [monster-ai.md](monster-ai.md) | The AI tick and target search, think timing, what each common AI does with its aip values, hirelings and summons, unique-mod start handlers at monster init, the 0xac message, player corpses |
+| [monster-ai.md](monster-ai.md) | The AI tick and target search, think timing, what each common AI does with its aip values, AI commands, act boss mechanics, differences from classic, hirelings and summons, unique-mod start handlers at monster init, the 0xac message, player corpses |
+| [monster-ai-routines.md](monster-ai-routines.md) | Per-AI reference: what every monster AI routine does and what each aip value means |
 | [objects.md](objects.md) | World objects: populate/init/operate tables, PreOperate and mode jitter, chests and their TC level, traps, shrines, wells, doors, portal pairs, object messages |
 | [quests-acts.md](quests-acts.md) | Quests across the five acts: quest records and flags, the shared quest machinery (status, syncs, sequence filters, intro rule), per-quest triggers and messages, Tyrael's trip and the end of game |
 | [hirelings.md](hirelings.md) | Mercenaries outside combat: the hireling row, hire list and quote, hire and resurrect, death and the owner's death or leave, items, save and load, messages |

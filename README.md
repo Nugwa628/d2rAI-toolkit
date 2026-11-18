@@ -337,7 +337,8 @@ in an area. It's also good reading for human modders.
 | [map-generation.md](knowledge/map-generation.md) | How levels are generated, streamed and travelled |
 | [items-inventory.md](knowledge/items-inventory.md) | Death drops, item ids and seeds, level requirement, inventory requests, vendor stock and prices |
 | [skills-missiles.md](knowledge/skills-missiles.md) | Skill start/do per slot, missile hits, timed states, mercenary AI |
-| [monster-ai.md](knowledge/monster-ai.md) | The AI tick, target search, common AIs and their aip values, monster init, player corpses |
+| [monster-ai.md](knowledge/monster-ai.md) | The AI tick, target search, common AIs and their aip values, act bosses, monster init, player corpses |
+| [monster-ai-routines.md](knowledge/monster-ai-routines.md) | Per-AI reference: what every monster AI routine does and what each aip value means |
 | [objects.md](knowledge/objects.md) | Chests, shrines, wells, doors, traps and portals: populate, init and operate functions |
 | [quests-acts.md](knowledge/quests-acts.md) | Quests across the five acts: quest records and flags, the shared quest machinery, each quest's triggers and messages, the end of game |
 | [hirelings.md](knowledge/hirelings.md) | Mercenaries outside combat: hire list and quote, hire, death, resurrect, items, save and messages |
