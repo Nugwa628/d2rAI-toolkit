@@ -17,7 +17,8 @@ the table below.
 | Guide | What it covers |
 |---|---|
 | [ai-workflow.md](ai-workflow.md) | Running a mod project with AI agents: coordinator and lanes, model choice, game slots, the bug list, releases, safety, owner updates, failure modes |
-| [testing.md](testing.md) | Testing in the real game without a human: game slots and their queue, game control without real input, named checks, release-like installs |
+| [testing.md](testing.md) | Testing in the real game without a human: game slots and their queue, shared seats (a game budget for the whole PC), game control without real input, named checks, release-like installs |
+| [linux.md](linux.md) | D2R on Linux under Proton: slot prefixes, the offline check, a private display per game, focus, harness input under Wine, graphics profiles and VRAM, how many games at once, building plugins with MSVC under Wine |
 | [release.md](release.md) | Packaging and publishing: 7z and manifest, content-addressed objects, delta upload, server ingest, CDN mirror, release pages, `release.sh` |
 | [distribution.md](distribution.md) | Where players get the files: your own host + CDN + downloader, GitHub Releases, Nexus Mods (archive layout, uploads, API limits, Vortex), and combinations, with a comparison table |
 | [downloader.md](downloader.md) | The player-facing installer and updater: what it does, building your own from one config header |

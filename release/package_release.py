@@ -115,6 +115,12 @@ def fix_mtimes(mod: Path) -> None:
     t = time.mktime(STAMP + (0, 0, -1))
     for p in [mod, *mod.rglob("*")]:
         os.utime(p, (t, t))
+    if os.name != "nt":
+        # 7-Zip on Linux stores each entry's Unix mode, so the umask (002 on some distributions) would change the
+        # archive's bytes: files 0644 and folders 0755, the modes dl_ingest.py rebuilds the server's copy with
+        for p in [mod, *mod.rglob("*")]:
+            if not p.is_symlink():
+                os.chmod(p, 0o755 if p.is_dir() else 0o644)
 
 
 def write_7z(mod: Path, out: Path, sevenzip=None) -> None:

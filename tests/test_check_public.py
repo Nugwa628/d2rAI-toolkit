@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 import zlib
 from pathlib import Path
 
@@ -353,6 +354,11 @@ def quiet_install(argv):
 
 class HookTests(unittest.TestCase):
     def setUp(self):
+        # install_hooks asks git for the hooks folder: without this a global core.hooksPath would send the test's
+        # hooks into the user's real shared hooks folder
+        env = mock.patch.dict(os.environ, GIT_ENV)
+        env.start()
+        self.addCleanup(env.stop)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.repo = Path(self._tmp.name) / "repo"

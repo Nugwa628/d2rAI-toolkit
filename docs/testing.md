@@ -5,6 +5,8 @@ needs to sit at the keyboard, and your own game and characters are never touched
 
 The tools are in `testing/`. They are plain Python 3.12+ (standard library only) and run on Windows, where the game
 runs. Everything that needs Windows is behind a function, so the scripts also import and unit-test on other systems.
+On Linux the game runs under Proton, one Wine prefix per slot, on a private X display: see [linux.md](linux.md) for the
+setup, the helpers (`testing/linux_env.py`, `testing/wctl/`) and what was measured.
 
 | Tool | What it does |
 |---|---|
@@ -16,7 +18,8 @@ runs. Everything that needs Windows is behind a function, so the scripts also im
 | `testing/testing.example.toml` | The config. Copy it to `modkit-testing.toml`. |
 
 Contents: [Quick start](#quick-start) · [Why slots](#why-slots) · [The config file](#the-config-file) ·
-[Slots, locks and the queue](#slots-locks-and-the-queue) · [Controlling the game](#controlling-the-game) ·
+[Slots, locks and the queue](#slots-locks-and-the-queue) ·
+[Shared seats](#shared-seats-a-game-budget-for-the-whole-pc) · [Controlling the game](#controlling-the-game) ·
 [The harness protocol](#the-harness-protocol) · [Writing and running checks](#writing-and-running-checks) ·
 [Screenshots and results](#screenshots-and-results) · [Test what players get](#test-what-players-get) ·
 [Targeted tests and the full suite](#targeted-tests-and-the-full-suite) · [Troubleshooting](#troubleshooting)
@@ -107,6 +110,7 @@ them with their defaults. The ones you will change:
 | `logs.loader_log`, `startup_line`, `crash_dir`, `plugin_log` | Logs the tools read. The game counts as started when `startup_line` appears in `loader_log`. |
 | `harness.*` | The plugin's test harness contract. See [the harness protocol](#the-harness-protocol). |
 | `runs.dir` | Where locks, run folders and install state go (default `~/modkit-runs`). |
+| `seats.dir`, `project`, `wait`, `yield_to`, `want_cap` | The machine-wide game budget shared with other projects. See [shared seats](#shared-seats-a-game-budget-for-the-whole-pc). |
 | `checks.modules`, `paths`, `start_timeout` | Which Python modules hold your checks, and how long to wait for startup (default 120 s). |
 | `release.site_url`, `channel`, `seven_zip` ... | For [release installs](#test-what-players-get). |
 
@@ -151,6 +155,47 @@ python testing/game_slots.py unlock N [OWNER] [--force]
 `OWNER` defaults to `MODKIT_RUN` (then `manual`); the slot defaults to `MODKIT_SLOT`. `unlock` needs the owner, or
 `--force` to clear whatever is there (use it for the lock of a lane that has died). Exit codes: 0 ok, 1 the lock is
 held by somebody else, 2 bad usage, bad config, or slot 1.
+
+## Shared seats: a game budget for the whole PC
+
+Locks stop two agents from using one slot. They do not stop a PC from running more games than it can hold: VRAM runs
+out first (about 3.6 to 5 GB per game, see [linux.md](linux.md#how-many-games-at-once)), and when it is full games
+slow down, spill into system memory or crash. When several projects share one PC, each with its own slots, they also
+need one budget between them. That is what seats are.
+
+Give every project's config the same `[seats] dir` and put a `budget.json` there:
+
+```json
+{"max_games": 3, "set_by": "both coordinators", "measured": "<run folder of the measurement>"}
+```
+
+| File in `seats.dir` | What it is |
+|-|-|
+| `budget.json` | `max_games`: how many games may run on this PC at once, all projects together. Without the file nothing changes |
+| `game.seat.K/` | One seat, K = 1 to `max_games`, taken with `mkdir` like a lock. `owner.txt`: `<owner> pid=<pid> <time> slot=<n>` |
+| `game.want.<project>/` | A project that is waiting for seats. `owner.txt`: `<project> pid=<pid> <time> count=<c>` |
+
+The rules, the same in every project:
+
+- **Seat first, then the slot lock.** If the lock cannot be taken, the seat is given back at once. **Release the lock
+  first, then the seat.** A seat lives exactly as long as its slot lock, so a session lock (`pid=0`) holds its seat
+  until `unlock`.
+- **Stale** is the same as for locks: a pid that no longer runs. `pid=0` (taken by hand) is never stale. A folder
+  without `owner.txt` was made by hand and counts as held.
+- **No free seat:** `acquire` refuses, or waits up to `seats.wait` seconds (`lock --wait` waits as well).
+- **Waiting projects:** a project that needs seats and cannot get them writes `game.want.<project>` with the number it
+  needs (`acquire_wait(..., want=N)` does this while it waits, and removes it after). While another project's want
+  exists, nobody takes a seat that would leave fewer free seats than it wants (a want counts for at most
+  `seats.want_cap`, default 2). Running games are never stopped: they finish their run and free their seat, so the
+  waiter gets in after at most one run. `seats.yield_to` lists the projects whose wants yours respects (`["*"]`: all).
+  Give one project priority by having only the other one yield.
+- A project that needs two games together (a multiplayer test) takes **both or none**: it does not hold one seat while
+  waiting for the second.
+- `status` shows the budget, the seats held and who is waiting.
+
+Measure before you set `max_games`: one game alone, then two, three ..., each with a full smoke run, sampling VRAM,
+GTT (spill), GPU busy, swap and RAM every second, and stop at the first failure or when VRAM passes about 90%. Count a
+high-quality "visual" game as two seats. Change the number only with every project that uses it.
 
 ### The pattern for several agents
 
@@ -432,6 +477,8 @@ python -m unittest discover -s tests -p "test_testing_*.py"
 | `slot 1 is the user's own game ...` | You asked for slot 1. Use a slot from 2 to `game.slot_count`. This is on purpose. |
 | `game.install_dir is not set` | No config was found. Check `--config`, `MODKIT_TESTING_CONFIG`, or that `./modkit-testing.toml` exists in the current folder. |
 | `slot 2 held by <owner> pid=...` | Somebody has the slot. Wait (`lock ... --wait`), take another (`lock any`), or look at `status`. |
+| `slot 3: no free seat (max_games 2): ...` | The PC's game budget is used up (`budget.json` in `seats.dir`). Wait (`lock ... --wait`, `seats.wait`), or ask who holds the seats. |
+| `slot 3: yielding to <project> wants 2 ...` | Another project is waiting for seats and yours makes room. You get in when its want is gone. |
 | A lock shows `STALE` | Its process died. The next `lock` replaces it. For a `pid=0` lock of a lane that has gone, `unlock N --force`. |
 | `slot 2 is not locked by MODKIT_RUN=...` | `release_install.py` needs the lock *and* the same name in `MODKIT_RUN`. Take it with `lock 2 <lane>`, then run with `MODKIT_RUN=<lane>`. |
 | `the game of slot 2 is not running` | Run `game_ctl.py --slot 2 start`, or use `ctx.ensure_running()` in the check. |

@@ -159,6 +159,11 @@ Agents that run the real game need somewhere to run it. Sharing the player's own
 - Tests run in the background. Nothing may send synthetic keyboard or mouse input or steal focus, because the human
   may be using the machine.
 - Lanes use their own throwaway characters. They never move, rename or delete saves they did not create.
+- **Several projects on one PC** share one machine-wide budget of games, because VRAM runs out before slots do. Give
+  every project the same seats folder (`budget.json` with `max_games`), take a seat before the slot lock, and let a
+  project that is waiting for seats publish that, so the others make room after their current run. Measure the budget
+  (VRAM, GPU, swap, a smoke run per game) and change it only together. Details: [testing.md](testing.md#shared-seats-a-game-budget-for-the-whole-pc).
+- On Linux the games run under Proton on private displays: [linux.md](linux.md).
 
 ### Targeted tests, full suite at milestones
 
@@ -242,6 +247,29 @@ Hard-won rules:
 - Downloaded archives and installers are untrusted. Unpack them into a new empty folder, don't run their executables,
   and run any Python that reads them with `-I`.
 
+### Agents on a Linux machine
+
+Lessons from running many lanes at a time on one Linux PC:
+
+- **Cap memory-heavy jobs.** A few lanes each running a big build, a 3D bake or an image pass at once filled RAM, and the
+  kernel's OOM killer ended processes, and it does not always pick the guilty one. Run anything that can grow under a
+  limit, for example `prlimit --as=$((10*1024**3)) -- python bake.py ...` (about 10 GB), so the job
+  fails with a MemoryError instead of taking the machine down (`--as` limits address space: give programs that reserve
+  much more than they use, such as a game under Wine, no such cap). Put the limit in the lane rules, not in each prompt.
+- **Keep the turn alive while you wait.** A lane that ends its turn "to wait for a notice" (a finished build, a free slot,
+  a review) often never comes back, and its slot lock and running game stay behind. Wait inside the turn with a bounded
+  polling loop or the harness's wait tool, and end the turn only when the job is done or handed back.
+- **Root steps go through the owner.** Agent sandboxes often run with `NoNewPrivs`, so `sudo` cannot work from inside
+  them, and it should not. When a task needs root (mounting a drive, a package), the agent writes one short script with
+  its purpose at the top, the owner reviews it and runs it in a terminal, and the agent checks the result. One script per
+  approved task, nothing else run as root.
+- **Tests must not touch the user's global config.** A test that runs `git` (hooks, config) in a temporary repository
+  must isolate itself (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`). Otherwise a global
+  `core.hooksPath` sends the test's writes into the user's real hooks folder, for every repository on the machine.
+- **Big files go on a work volume**, not in home: slots, prefixes, builds, run folders. Keep run folders outside every
+  repository, and delete a run's bulky files (Proton logs, uncited screenshots) when it passes; keep everything of a
+  failed run.
+
 ## 9. Talking to the human owner
 
 The owner is busy and isn't reading code. A good coordinator message is short and has the same three parts every time:
@@ -301,6 +329,9 @@ Tips:
 | Players report a crash you can't reproduce. | Setup problem: wrong loader mod folder, stale plugin copy, different build. | Have the plugin log its own path, version and the other loaded plugins at startup. Ask for the loader log and the crash report. |
 | A lane stalls waiting for a game slot forever. | All slots locked by lanes that ended without unlocking. | Check slot status. Stale locks from finished lanes are cleared by the coordinator. |
 | Docs drift from reality. | Nobody owns them. | Docs updates are part of the lane's "done". The coordinator checks them at merge. |
+| Processes die at random while many lanes work. | The machine ran out of RAM and the OOM killer chose. | Cap memory-heavy jobs (`prlimit --as`, about 10 GB each) and fewer of them at once. |
+| A test game grabbed the owner's keyboard focus on Linux. | It ran on the desktop display. | Run every game on its own Xvfb display and record the desktop's active window during the run ([linux.md](linux.md)). |
+| The third or fourth game crashes, the earlier ones lag. | VRAM is full: games spill to system memory or die. | Cap VRAM per game, use a low graphics profile for functional checks, and a shared game budget for the whole PC. |
 
 ## 12. Starter checklist
 

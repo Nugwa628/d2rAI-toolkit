@@ -36,6 +36,11 @@ def is_ours(path: Path) -> bool:
 
 def install(root: Path, force: bool) -> int:
     dest = hooks_dir(root)
+    git_dir = Path(subprocess.run(["git", "-C", str(root), "rev-parse", "--absolute-git-dir"], capture_output=True,
+                                  text=True).stdout.strip() or root)
+    if not dest.resolve().is_relative_to(git_dir.resolve()):
+        print(f"note: core.hooksPath points at a shared hooks folder ({dest}); the hooks run for every repository "
+              "that uses it, and skip the ones without tools/check_public.py")
     dest.mkdir(parents=True, exist_ok=True)
     rc = 0
     for name in HOOKS:

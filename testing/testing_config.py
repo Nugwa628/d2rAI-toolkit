@@ -88,6 +88,14 @@ DEFAULTS: dict[str, Any] = {
         "dir": "~/modkit-runs",         # lock directories, run folders, release-install state
         "screenshots_dir": "screenshots",
     },
+    "seats": {
+        # A machine-wide game budget shared by every project on the PC. See docs/testing.md "Shared seats".
+        "dir": "",                      # shared folder with budget.json and game.seat.K ("" = runs.dir)
+        "project": "",                  # this project's name in game.want.<project> ("" = never publish a want)
+        "wait": 0,                      # seconds acquire() waits for a free seat before it refuses
+        "yield_to": ["*"],              # projects whose game.want.<project> we make room for ("*" = every other)
+        "want_cap": 2,                  # a want counts for at most this many seats
+    },
     "checks": {
         "modules": ["example_checks"],  # modules that register checks with @check
         "paths": [],                    # extra folders put on sys.path to find them
@@ -324,6 +332,11 @@ class Config:
 
     def lock_path(self, n: int) -> str:
         return os.path.join(self.runs_dir, f"game.lock.{int(n)}")
+
+    @property
+    def seats_dir(self) -> str:
+        d = self.data["seats"]["dir"]
+        return self.path(d) if d else self.runs_dir
 
     def run_dir(self, run_id: str) -> str:
         if not valid_run_id(run_id):

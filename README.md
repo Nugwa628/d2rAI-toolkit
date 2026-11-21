@@ -16,6 +16,7 @@
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776ab?logo=python&logoColor=white">
   <img alt="D2R 3.3" src="https://img.shields.io/badge/D2R-3.3-8b1a1a">
   <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-0078d4">
+  <img alt="Linux (Proton)" src="https://img.shields.io/badge/Linux-Proton-fcc624?logo=linux&logoColor=black">
 </p>
 
 <p align="center">
@@ -94,9 +95,10 @@ ids D2R hard-codes, redo the old engine DLL's rules in a plugin.
 <td valign="top">
 
 ### 🧪 Test in real game copies
-Game slots are frozen copies of your install, queued with locks. The agent controls them without your mouse or
-keyboard, and runs named checks with screenshots. Your own game is never touched.
-→ [testing](docs/testing.md)
+Game slots are frozen copies of your install, queued with locks and a machine-wide game budget. The agent controls
+them without your mouse or keyboard, and runs named checks with screenshots. Your own game is never touched. On Linux
+each game runs under Proton on its own private display.
+→ [testing](docs/testing.md) · [Linux](docs/linux.md)
 
 </td>
 </tr>
@@ -173,6 +175,10 @@ example? Build [`examples/showcase`](examples/showcase/) with `py -3 -m modkit b
 with 0 errors. The warnings it shows are in D2R's own data (vanilla formulas and seqnum values), plus one rename note.
 
 Now open the folder in your agent (`claude` in a terminal) and start asking.
+
+**On Linux?** The Python tools run natively (`python3` instead of `py -3`, CascLib with CMake), and the game runs under
+Proton. [docs/linux.md](docs/linux.md) covers the slot prefixes, the offline check, private displays, input, VRAM and
+building plugins with MSVC under Wine.
 
 ## Your first prompt
 
@@ -285,10 +291,10 @@ with 0 errors, installs with the game closed, and adds a row to the project's `T
 | [`knowledge/`](knowledge/README.md) | How D2R works for modders: limits, new game systems, tables, HD art, layouts, strings, saves, reverse engineering, addresses, debugging, porting |
 | [`.claude/skills/`](.claude/skills/) | Step-by-step guides the agent follows ([list below](#skills)) |
 | [`CLAUDE.md`](CLAUDE.md) | The agent's standing instructions and rules |
-| [`docs/`](docs/README.md) | Guides for running a project: AI workflow, testing, releases, [distribution](docs/distribution.md) (own host, GitHub, Nexus Mods), downloader |
+| [`docs/`](docs/README.md) | Guides for running a project: AI workflow, testing, [Linux](docs/linux.md), releases, [distribution](docs/distribution.md) (own host, GitHub, Nexus Mods), downloader |
 | [`templates/`](templates/) | Fill-in files: coordinator prompt, lane rules, lane prompt, bug list, plan, changelog, owner update |
 | [`plugin-template/`](plugin-template/README.md) | D2RLoader plugin skeleton (C++): guards, off-switch, status command, a new skill function, an inline hook |
-| [`testing/`](testing/) | Game slots, game control without real input, a checks framework, release-like installs |
+| [`testing/`](testing/) | Game slots and shared seats, game control without real input, a checks framework, release-like installs, Linux helpers (`linux_env.py`, `wctl/`) |
 | [`release/`](release/) | Packaging (7z + manifest, `--nexus` archive), delta publish over SFTP, server ingest, CDN mirror, release pages, `release.sh` |
 | [`downloader/`](downloader/) | The player-facing Win32 installer and updater, configured by one header file |
 | [`tools/`](tools/) | CascLib build, game image dump, Ghidra scripts, `check_public.py` and the git hooks |
@@ -350,7 +356,7 @@ in an area. It's also good reading for human modders.
 | [crash-triage.md](knowledge/crash-triage.md) | From a player's crash report to a function and a fix, with a worked example |
 | [d2rloader.md](knowledge/d2rloader.md) | D2RLoader facts and traps: default mod, the first start, other plugins, version checks |
 | [porting-classic-mods.md](knowledge/porting-classic-mods.md) | Porting a classic mod: inventory, table conversion, fixed ids, function numbers, art order |
-| [plugin-techniques.md](knowledge/plugin-techniques.md) | Plugin recipes: belt refill, buff HUD, weapon swap, waypoint UI, many clients on one machine |
+| [plugin-techniques.md](knowledge/plugin-techniques.md) | Plugin recipes: belt refill, buff HUD, weapon swap, waypoint UI, many clients on one machine, plugins under Wine / Proton |
 | [sdk-gaps.md](knowledge/sdk-gaps.md) | Where plugins still patch the game, and the D2RLoader SDK service that would replace each patch |
 | [modkit-ops.md](knowledge/modkit-ops.md) | Every patch operation `modkit build` understands |
 
@@ -401,7 +407,7 @@ py -3 tools\check_public.py --no-history  # files only
 
 | What | Why |
 |---|---|
-| Windows 10 or 11 | D2R, D2RLoader and the native tools are Windows-only |
+| Windows 10 or 11, **or Linux** with Steam's Proton | D2R and D2RLoader are Windows programs; on Linux they run under Proton ([docs/linux.md](docs/linux.md)) |
 | Diablo II: Resurrected **3.3** (Battle.net or Steam) | The game files the mod is built from |
 | Python **3.12+** (`py -3`) | `modkit` and every script (standard library only) |
 | git, Visual Studio with the C++ workload, CMake **on `PATH`** (3.20+, 3.29+ for plugins; VS's bundled CMake in `Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin` works) | CascLib (`tools\build_casclib.ps1`), plugins (`plugin-template\build.ps1`) and the downloader |
@@ -420,7 +426,9 @@ We'd rather tell you now than have you find out later:
   addresses must be found again ([engine-re.md](knowledge/engine-re.md)).
 - The plugin template is a starting point, not a framework. Engine work still needs care and Ghidra.
 - No classic MPQ/DC6/DCC conversion pipeline: art goes in as PNGs and becomes D2R sprites.
-- Windows only. Parts of `modkit` run elsewhere, but the game and the native tools don't.
+- Windows first. Linux works under Proton for building, testing and releasing ([docs/linux.md](docs/linux.md)); the
+  PowerShell helper scripts and the player downloader are still Windows programs, and plugins are built with MSVC under
+  Wine there.
 
 ## FAQ
 
@@ -446,6 +454,15 @@ start the game twice. See [d2rloader.md](knowledge/d2rloader.md).
 Both. They ship the same program under different build numbers. The Steam 3.3 build seen so far runs the same
 image as Battle.net's 93847. That's why requirement checks use the game version (`3.3`), never a build number, and
 plugins check the image itself.
+</details>
+
+<details>
+<summary><b>Does it work on Linux?</b></summary>
+
+Yes. `modkit`, the tests and the release tools run natively. The game runs under Proton, one Wine prefix per test
+slot, each game on its own Xvfb display so it never takes your desktop's focus. Plugins build with MSVC under Wine.
+[docs/linux.md](docs/linux.md) has the setup, the traps (the 30-day online check, input hooks under Wine, VRAM) and
+the measurements.
 </details>
 
 <details>

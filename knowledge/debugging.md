@@ -13,6 +13,7 @@ From real bugs in an overhaul port (D2R 3.3.0 build 93847, D2RLoader 1.3.1). Whe
 | D2R log | `blz-log.txt` (game's log location) | `File not found "..."` (missing assets), `Failed to find an animation state` (mostly harmless noise, also for D2R's own NPCs) |
 | Crash dumps | `%LOCALAPPDATA%\CrashDumps\D2RLoader.exe.<pid>.dmp` | Faulting RIP and memory; parse the minidump's exception and memory-list streams |
 | Plugin console command | in-game console | Version, image timestamp match, each feature's install result |
+| Under Proton / Wine | the same files inside the slot folder; saves and `Settings.json` in `<pfx>/drive_c/users/steamuser/Saved Games/Diablo II Resurrected/`; Proton's `steam-<appid>.log` (DXVK and vkd3d lines) | Copy the slot's logs out before a slot restore deletes them. See [docs/linux.md](../docs/linux.md) |
 
 Bisect anything that a plugin may cause with the diagnosis switch file (parts off) before reading code. For a
 player's crash report, follow [crash-triage.md](crash-triage.md). For loader-side surprises (default mod, first

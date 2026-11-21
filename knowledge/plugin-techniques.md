@@ -1,4 +1,4 @@
-# Plugin techniques: belt refill, buff HUD, weapon swap, waypoint UI, many clients
+# Plugin techniques: belt refill, buff HUD, weapon swap, waypoint UI, many clients, Wine
 
 How to build common quality-of-life plugin features on D2R 3.3 build 93847 with D2RLoader 1.3.1 (PluginSDK 0.3.0)
 without fighting the engine. Techniques only; the hooks and offsets they use are in
@@ -92,3 +92,25 @@ table change in [ui-layouts.md](ui-layouts.md) (Waypoint panel).
   instances. A renamed copy of the loader and a tagged window title make instances easy to tell apart.
 - Stagger starts by a few seconds; the start-up table compile is the CPU peak.
 - How the toolkit runs several test games: [../docs/testing.md](../docs/testing.md).
+
+## 6. Plugins under Wine / Proton
+
+Players and test machines can run D2R under Proton on Linux. A plugin that works on Windows can still
+fail there. What was found (D2R 3.4, Proton Experimental 11; details and code in [docs/linux.md](../docs/linux.md)):
+
+- **Inline hooks on `win32u` syscall stubs:** Wine's stubs share the Windows head (`4c 8b d1 b8 <ssn> f6 04 25 08 03 fe
+  7f 01 75 03 0f 05 c3`) but end in `eb 01 c3 ff 14 25 00 10 fe 7f c3` (a call into Wine's dispatcher) instead of
+  `cd 2e c3`. A byte check that knows only the Windows tail refuses every stub. Accept both shapes, nothing else, and
+  fall back to the exe's `user32` imports when a stub cannot be hooked.
+- **Loader lock:** under Wine, `GetModuleHandleEx` and `GetModuleFileName` take the loader lock. Never call them while
+  holding your own lock that a DLL-loading thread may also wait for: the game deadlocks at startup.
+- **Missing Windows files:** a Proton prefix has few of Windows' fonts (no Segoe UI) and none of many other system
+  files. An ImGui overlay that loads `%WINDIR%\Fonts\*.ttf` must check each file and fall back to the built-in font:
+  Dear ImGui 1.91's error recovery opens a tooltip window when a font file is missing, and outside a frame that crashes
+  the first `Present`.
+- **Focus and the foreground window:** D2R under Proton asks none of `GetForegroundWindow`, `GetFocus` or
+  `GetActiveWindow`; activation comes through window messages. Code that fakes focus by subclassing the window can hang
+  startup on a display where the game holds the real focus. Keep such tricks opt-in.
+- **Memory probes:** read game structures only where `VirtualQuery` says the memory is committed and readable. A probe
+  that relies on SEH to catch a bad read still makes D2R's last-resort handler write a crash report for the handled
+  first-chance exception, on Windows and under Wine alike.
