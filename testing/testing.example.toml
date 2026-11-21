@@ -77,6 +77,15 @@ cursor_start = [800, 450]
 dir = "~/modkit-runs"                           # locks (game.lock.N), run folders, release-install state
 screenshots_dir = "screenshots"                 # inside <runs.dir>/<run id>/
 
+[seats]
+# A machine-wide game budget shared by several projects (docs/testing.md "Shared seats"). Nothing changes until
+# <dir>/budget.json exists.
+dir = ""                                        # the shared folder ("" = runs.dir); the same path in every project
+project = ""                                    # this project's name for game.want.<project> ("" = never publish one)
+wait = 0                                        # seconds to wait for a free seat before refusing
+yield_to = ["*"]                                # projects whose wants we make room for ("*" = every other project)
+want_cap = 2                                    # a want counts for at most this many seats
+
 [checks]
 modules = ["example_checks"]                    # modules that register checks with @check
 paths = []                                      # extra folders to find them in (e.g. ["my-checks"])

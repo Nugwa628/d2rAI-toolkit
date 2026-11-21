@@ -1,6 +1,8 @@
 #!/bin/sh
 # Commit-msg hook: the commit message goes through the same scanner as the files.
 root=$(git rev-parse --show-toplevel) || exit 1
+# In a shared hooks folder (core.hooksPath) the hook runs for every repository: only repos that ship the scanner use it.
+[ -f "$root/tools/check_public.py" ] || exit 0
 for py in python3 python "py -3"; do
 	if $py -c "import sys; sys.exit(sys.version_info < (3, 9))" >/dev/null 2>&1; then
 		exec $py "$root/tools/check_public.py" --root "$root" --message-file "$1" --quiet

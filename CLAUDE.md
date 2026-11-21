@@ -2,7 +2,8 @@
 
 This repo (d2rAI-toolkit; Python package and CLI `modkit`) is a toolkit for building Diablo II: Resurrected mods, up to full overhauls, from D2R's own files and
 engine. You (Claude) are the main user: someone describes what they want in their mod, and you make it with these
-tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 (PluginSDK 0.3.0). Windows.
+tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 (PluginSDK 0.3.0). Windows, or Linux
+with the game under Proton (`docs/linux.md`).
 
 ## Where things are
 - `modkit/`: the Python toolkit (`python -m modkit -h`). A mod is a project folder of JSON patches applied to the
@@ -28,7 +29,9 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
 - `templates/`: fill-in files for a new project: coordinator prompt, lane rules, lane prompt, `bugs.md`, `PLAN.md`,
   `CHANGELOG.md`, owner update.
 - `testing/`: how to test a mod in the real game without a human: game slots (frozen copies of the install, queued
-  with locks), named game checks driven through a plugin test harness, and release-like installs.
+  with locks and a machine-wide seat budget), named game checks driven through a plugin test harness, and release-like
+  installs. On Linux, `docs/linux.md` and `testing/linux_env.py`: each game under Proton in its own prefix, on a private
+  Xvfb display, never on the user's desktop.
 - `release/`: packaging and publishing: build the release package, a manifest, a fail-fast release script, release
   pages. `docs/distribution.md` compares serving the files from your own host, GitHub Releases and Nexus Mods
   (`package_release.py --nexus` writes a Nexus-ready archive).
@@ -98,3 +101,8 @@ tools. Target: D2R 3.3 (engine addresses for build 93847 only), D2RLoader 1.3.1 
     `docs/ai-workflow.md`.
 13. **Ask the human before** anything public, paid or destructive (publishing, making a repo public, force-push,
     deleting saves or branches, spending money, touching their real game install). Never ask for secrets in chat.
+14. **On Linux** (docs/linux.md): run every test game on its own private display, never on the user's desktop, and
+    record the desktop's active window during the run. The Battle.net cookie and the prefix's `MachineGuid` are the
+    user's credentials: copy them only into the test prefixes the user named, never print, log, decode or commit them.
+    Run memory-heavy jobs under a limit (`prlimit --as`, about 10 GB). Root steps go into a short reviewed script that
+    the user runs; never try to elevate from the agent.

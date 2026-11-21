@@ -21,3 +21,6 @@ out/
 
 # Local scanner configuration
 private_terms.txt
+
+# Local helper builds (testing/wctl/build.sh)
+*.exe

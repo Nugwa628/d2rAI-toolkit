@@ -14,6 +14,10 @@ Environment: MODKIT_RUN is the default OWNER, MODKIT_SLOT the default N. A lock 
 <runs.dir>/game.lock.N holding owner.txt: `<owner> pid=<pid> <time>`. A lock whose pid is dead is stale and is
 replaced. pid=0 marks a manual lock (made by `lock`): it lasts until `unlock`.
 
+Shared seats: when <seats.dir>/budget.json exists ({"max_games": N}), every slot lock also takes one of N
+machine-wide seats (game.seat.K), so several projects on one PC never run more games together than the PC can hold.
+See docs/testing.md "Shared seats".
+
 Exit codes: 0 ok, 1 the lock is held by somebody else, 2 bad usage / config / refused (slot 1).
 """
 from __future__ import annotations
@@ -71,9 +75,55 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
+def wine_image_path(argv0: str, environ: dict) -> str:
+    """The Linux path of a Wine process's program. A Wine process's argv[0] is its Windows image path
+    (`D:\\Game\\D2RLoader-s2.exe`); the drive letter maps through `<WINEPREFIX>/dosdevices/<x>:`. "" when argv[0] is not
+    a Windows path or the prefix is unknown."""
+    import re
+    m = re.match(r"^([A-Za-z]):[\\/](.*)$", argv0 or "")
+    pfx = environ.get("WINEPREFIX") or ""
+    if not m or not pfx:
+        return ""
+    drive = os.path.join(pfx, "dosdevices", m.group(1).lower() + ":")
+    try:
+        root = os.path.realpath(drive)
+    except OSError:
+        return ""
+    return os.path.join(root, *[p for p in re.split(r"[\\/]", m.group(2)) if p])
+
+
+def _linux_processes(names: tuple[str, ...] | None, proc: str = "/proc") -> list[tuple[int, str, str]]:
+    """Wine processes from /proc: (pid, exe name, Linux path of the program). Programs of every Wine prefix are seen;
+    the caller matches the path to a slot folder. Processes we may not read are skipped."""
+    out = []
+    try:
+        entries = os.listdir(proc)
+    except OSError:
+        return out
+    for e in entries:
+        if not e.isdigit():
+            continue
+        try:
+            with open(os.path.join(proc, e, "cmdline"), "rb") as f:
+                argv0 = f.read().split(b"\0", 1)[0].decode("utf-8", "replace")
+            with open(os.path.join(proc, e, "environ"), "rb") as f:
+                env = dict(kv.split("=", 1) for kv in f.read().decode("utf-8", "replace").split("\0") if "=" in kv)
+        except OSError:
+            continue
+        name = argv0.replace("\\", "/").rsplit("/", 1)[-1]
+        if names is not None and name.lower() not in names:
+            continue
+        path = wine_image_path(argv0, env)
+        if path:
+            out.append((int(e), name, path))
+    return out
+
+
 def processes(names: tuple[str, ...] | None = None) -> list[tuple[int, str, str]]:
-    """[(pid, exe name, full image path)] of processes with these image names (lower case). Windows only: on
-    other systems the list is empty."""
+    """[(pid, exe name, full image path)] of processes with these image names (lower case). Windows: every process.
+    Linux: Wine / Proton processes, with the Linux path of their program (wine_image_path). Elsewhere: none."""
+    if sys.platform.startswith("linux"):
+        return _linux_processes(names)
     if os.name != "nt":
         return []
     import ctypes
@@ -215,12 +265,171 @@ def _remove_lock(path: str) -> None:
         return
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ---------------------------------------------------------------- shared seats (a machine-wide game budget)
+#
+# Several projects can share one PC, and the PC (VRAM first) holds only so many games. The budget lives in a folder
+# every project points at (seats.dir):
+#   budget.json           {"max_games": N, ...}: how many games may run at once, all projects together
+#   game.seat.K/          K = 1..N, taken with mkdir like a lock; owner.txt `<owner> pid=<pid> <time> slot=<n>`
+#   game.want.<project>/  a project waiting for seats; owner.txt `<project> pid=<pid> <time> count=<c>`
+# Order: seat first, then the slot lock; a failure between gives the seat back. Release: lock first, then seat.
+# Stale: pid gone (pid 0 = taken by hand, never stale). Without budget.json nothing changes.
+
+
+def budget(cfg: tc.Config) -> int | None:
+    """max_games of <seats.dir>/budget.json, or None when there is no budget (no seats are taken)."""
+    try:
+        with open(os.path.join(cfg.seats_dir, "budget.json"), encoding="utf-8") as f:
+            m = int(json.load(f)["max_games"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return max(m, 0)
+
+
+def seat_path(cfg: tc.Config, k: int) -> str:
+    return os.path.join(cfg.seats_dir, f"game.seat.{int(k)}")
+
+
+def _read_owner(path: str) -> str | None:
+    try:
+        with open(os.path.join(path, "owner.txt"), encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def _field(txt: str | None, key: str) -> str | None:
+    for p in (txt or "").split()[1:]:
+        if p.startswith(key + "="):
+            return p[len(key) + 1:]
+    return None
+
+
+def _entry_stale(txt: str | None, alive=None) -> bool:
+    """A seat or want without owner.txt was made by hand: held. pid 0: by hand, never stale."""
+    if not txt:
+        return False
+    pid = parse_owner(txt)[1]
+    return pid is not None and pid != 0 and not (alive or pid_alive)(pid)
+
+
+def seats(cfg: tc.Config) -> list[tuple[int, str | None]]:
+    """[(K, owner text or None)] of every game.seat.K folder (also K above the budget)."""
+    try:
+        names = os.listdir(cfg.seats_dir)
+    except OSError:
+        return []
+    out = []
+    for nm in names:
+        k = nm[len("game.seat."):] if nm.startswith("game.seat.") else ""
+        if k.isdigit() and os.path.isdir(os.path.join(cfg.seats_dir, nm)):
+            out.append((int(k), _read_owner(os.path.join(cfg.seats_dir, nm))))
+    return sorted(out)
+
+
+def our_seat(cfg: tc.Config, n: int, owner: str) -> int | None:
+    for k, txt in seats(cfg):
+        if txt and parse_owner(txt)[0] == owner and _field(txt, "slot") == str(n):
+            return k
+    return None
+
+
+def _write_owner(path: str, text: str) -> None:
+    tmp = os.path.join(path, f"owner.txt.{uuid.uuid4().hex[:8]}")
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(tmp, os.path.join(path, "owner.txt"))
+
+
+def wanted_by_others(cfg: tc.Config, alive=None) -> tuple[int, list[str]]:
+    """Seats other projects are waiting for: the sum of count=C (capped at seats.want_cap) over every live
+    game.want.<project> that seats.yield_to names ("*": every project but ours)."""
+    sc = cfg["seats"]
+    ours, yield_to, cap = sc.get("project") or "", list(sc.get("yield_to") or []), int(sc.get("want_cap") or 2)
+    try:
+        names = os.listdir(cfg.seats_dir)
+    except OSError:
+        return 0, []
+    total, notes = 0, []
+    for nm in sorted(names):
+        if not nm.startswith("game.want."):
+            continue
+        proj = nm[len("game.want."):]
+        if not proj or proj == ours or not ("*" in yield_to or proj in yield_to):
+            continue
+        txt = _read_owner(os.path.join(cfg.seats_dir, nm))
+        if _entry_stale(txt, alive):
+            continue
+        try:
+            c = int(_field(txt, "count") or 1)
+        except ValueError:
+            c = 1
+        c = max(1, min(c, cap))
+        total += c
+        notes.append(f"{proj} wants {c}")
+    return total, notes
+
+
+def publish_want(cfg: tc.Config, count: int, pid: int | None = None) -> str | None:
+    """Write game.want.<seats.project> (count seats). Returns its path, or None when seats.project is empty."""
+    proj = cfg["seats"].get("project") or ""
+    if not proj or not valid_owner(proj):
+        return None
+    path = os.path.join(cfg.seats_dir, f"game.want.{proj}")
+    os.makedirs(path, exist_ok=True)
+    _write_owner(path, f"{format_owner(proj, os.getpid() if pid is None else pid)} count={int(count)}")
+    return path
+
+
+def withdraw_want(cfg: tc.Config) -> None:
+    proj = cfg["seats"].get("project") or ""
+    if proj and valid_owner(proj):
+        shutil.rmtree(os.path.join(cfg.seats_dir, f"game.want.{proj}"), ignore_errors=True)
+
+
+def take_seat(cfg: tc.Config, n: int, owner: str, pid: int, alive=None) -> tuple[int | None, str]:
+    """One try at a free seat for slot N. Returns (K, message); K 0 = no budget (nothing taken), None = no seat.
+    A stale seat is replaced. While another project waits (wanted_by_others), take no seat that would leave it fewer
+    free seats than it wants: running games are never stopped, so the waiter gets in when the next one ends."""
+    m = budget(cfg)
+    if m is None:
+        return 0, "no budget.json"
+    k = our_seat(cfg, n, owner)
+    if k is not None:
+        return k, f"seat {k} already ours"
+    held = {k: txt for k, txt in seats(cfg)}
+    free = [k for k in range(1, m + 1) if k not in held or (held[k] and _entry_stale(held[k], alive))]
+    want, notes = wanted_by_others(cfg, alive)
+    if want and len(free) - 1 < want:
+        return None, f"yielding to {', '.join(notes)} ({len(free)} of {m} seats free)"
+    os.makedirs(cfg.seats_dir, exist_ok=True)
+    for k in free:
+        p = seat_path(cfg, k)
+        if os.path.isdir(p):
+            _remove_lock(p)  # stale
+        try:
+            os.mkdir(p)
+        except FileExistsError:
+            continue  # taken just now by someone else
+        _write_owner(p, f"{format_owner(owner, pid)} slot={n}")
+        return k, f"seat {k} of {m}"
+    who = "; ".join(f"seat {k}: {held.get(k) or 'by hand'}" for k in range(1, m + 1))
+    return None, f"no free seat (max_games {m}): {who}"
+
+
+def release_seat(cfg: tc.Config, n: int, owner: str | None) -> None:
+    """Remove the seat(s) held for slot N by `owner` (None: by anyone)."""
+    for k, txt in seats(cfg):
+        if _field(txt, "slot") == str(n) and (owner is None or parse_owner(txt)[0] == owner):
+            _remove_lock(seat_path(cfg, k))
+
 
 def acquire(cfg: tc.Config, n: int, owner: str, pid: int | None = None, alive=None) -> tuple[bool, str]:
     """Take the lock of slot N. Returns (ok, message).
 
     Slot 1 is refused. A stale lock (its pid is dead) is replaced. pid=0 makes a manual lock that is never stale.
-    Asking again with the same owner succeeds ("already ours")."""
+    Asking again with the same owner succeeds ("already ours"). With a budget.json the seat comes first (take_seat)
+    and is given back when the lock cannot be taken."""
     n = cfg.check_slot_number(n)
     if cfg.is_slot_one(n):
         return False, SLOT1_MSG
@@ -228,22 +437,28 @@ def acquire(cfg: tc.Config, n: int, owner: str, pid: int | None = None, alive=No
         return False, f"bad owner name {owner!r}: use letters, digits, dot, dash, underscore"
     pid = os.getpid() if pid is None else pid
     info = lock_info(cfg, n)
-    if info is not None:
-        if info.owner == owner:
-            return True, f"slot {n} already locked by {owner}"
-        if info.text and is_stale(info, alive):
-            _remove_lock(info.path)
-        else:
-            return False, f"slot {n} held by {info.describe()}"
+    if info is not None and info.owner == owner:
+        return True, f"slot {n} already locked by {owner}"
+    if info is not None and not (info.text and is_stale(info, alive)):
+        return False, f"slot {n} held by {info.describe()}"
+    k, seat_msg = take_seat(cfg, n, owner, pid, alive)
+    if k is None:
+        return False, f"slot {n}: {seat_msg}"
+    note = f" ({seat_msg})" if k else ""
+    if info is not None:  # stale: the dead owner's seat goes with its lock
+        release_seat(cfg, n, info.owner)
+        _remove_lock(info.path)
     os.makedirs(cfg.runs_dir, exist_ok=True)
     path = cfg.lock_path(n)
     try:
         os.mkdir(path)
     except FileExistsError:
+        if k:
+            release_seat(cfg, n, owner)
         return False, f"slot {n} was taken just now by someone else"
     with open(os.path.join(path, "owner.txt"), "w", encoding="utf-8", newline="\n") as f:
         f.write(format_owner(owner, pid))
-    return True, f"slot {n} locked by {owner}"
+    return True, f"slot {n} locked by {owner}{note}"
 
 
 def release(cfg: tc.Config, n: int, owner: str | None = None, manual: bool = False, force: bool = False
@@ -258,6 +473,8 @@ def release(cfg: tc.Config, n: int, owner: str | None = None, manual: bool = Fal
         return False, SLOT1_MSG
     info = lock_info(cfg, n)
     if info is None:
+        if owner is not None:
+            release_seat(cfg, n, owner)  # a seat left by a failure between the two steps
         return True, f"slot {n} is free"
     if owner is None:
         if not force:
@@ -266,7 +483,8 @@ def release(cfg: tc.Config, n: int, owner: str | None = None, manual: bool = Fal
         return False, f"slot {n} is held by {info.describe()}, not by {owner}"
     elif info.manual and not manual:
         return True, f"slot {n}: session lock of {owner} kept until `unlock`"
-    _remove_lock(info.path)
+    _remove_lock(info.path)  # the lock first, then its seat
+    release_seat(cfg, n, info.owner if owner is None else owner)
     return True, f"slot {n} unlocked"
 
 
@@ -284,11 +502,23 @@ def ensure_lock(cfg: tc.Config, n: int, owner: str, alive=None) -> tuple[bool, s
 
 
 def acquire_wait(cfg: tc.Config, n: int | str, owner: str, wait_s: float = 0, poll_s: float = 5.0,
-                 sleep=time.sleep, clock=time.monotonic, out=print, pid: int | None = None
+                 sleep=time.sleep, clock=time.monotonic, out=print, pid: int | None = None, want: int = 0
                  ) -> tuple[bool, str, int | None]:
     """Like acquire, but queues: while the slot is held, say who holds it and poll until wait_s ran out.
-    n may be "any": the first free slot from 2 to slot_count. Returns (ok, message, slot)."""
+    n may be "any": the first free slot from 2 to slot_count. Returns (ok, message, slot).
+    The wait is at least seats.wait. want > 0 publishes game.want.<seats.project> (count=want) while this call waits
+    for a seat, so projects that yield make room; it is removed when the call ends."""
+    wait_s = max(wait_s, float(cfg["seats"].get("wait") or 0))
     deadline = clock() + wait_s
+    try:
+        return _acquire_wait(cfg, n, owner, deadline, poll_s, sleep, clock, out, pid, want)
+    finally:
+        if want:
+            withdraw_want(cfg)
+
+
+def _acquire_wait(cfg, n, owner, deadline, poll_s, sleep, clock, out, pid, want):
+    published = False
     while True:
         slots = list(range(2, cfg.slot_count + 1)) if n == "any" else [cfg.check_slot_number(n)]
         if not slots:
@@ -300,6 +530,8 @@ def acquire_wait(cfg: tc.Config, n: int | str, owner: str, wait_s: float = 0, po
                 return True, msg, s
             if cfg.is_slot_one(s):
                 return False, msg, None
+        if want and not published and "seat" in msg and budget(cfg):
+            published = bool(publish_want(cfg, want))
         left = deadline - clock()
         if left <= 0:
             return False, msg if n != "any" else "every slot is held:\n" + "\n".join(
@@ -545,6 +777,12 @@ def _run(cfg: tc.Config, a) -> int:
     if a.cmd == "status":
         for n in range(1, cfg.slot_count + 1):
             print(format_status(slot_state(cfg, n)))
+        m = budget(cfg)
+        if m is not None:
+            held = ", ".join(f"{k}: {txt or 'by hand'}" for k, txt in seats(cfg)) or "none"
+            want, notes = wanted_by_others(cfg)
+            print(f"seats ({cfg.seats_dir}): max_games {m}; held {held}"
+                  + (f"; waiting: {', '.join(notes)}" if want else ""))
         return 0
     if a.cmd == "list":
         for n in range(1, cfg.slot_count + 1):

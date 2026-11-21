@@ -1,7 +1,8 @@
 # testing/
 
 Tools to test a D2R mod in the real game without a human at the keyboard. Python 3.12+, standard library only.
-Windows is needed to run the game; everything else (locks, config, checks, release installs) works anywhere.
+Windows, or Linux with Proton ([docs/linux.md](../docs/linux.md)), runs the game; everything else (locks, seats, config,
+checks, release installs) works anywhere.
 
 | File | What it is |
 |---|---|
@@ -12,6 +13,9 @@ Windows is needed to run the game; everything else (locks, config, checks, relea
 | `game_checks.py` | Small checks framework: `@check` registry, runner, results JSON, summary, screenshots. |
 | `example_checks.py` | Example checks to copy (`config-sane`, `game-starts`, `main-menu-visible`, `console-echo`, `no-new-crash-files`). |
 | `release_install.py` | Installs the PUBLISHED release into a slot, as a player would get it. |
+| `linux_env.py` | Linux under Proton: private display env, VRAM cap, no-focus registry values, graphics profiles, GPU gate, window helper driver ([docs/linux.md](../docs/linux.md)). |
+| `profiles/` | Graphics profiles (`test`, `visual`): the graphics keys of D2R's `Settings.json`. |
+| `wctl/` | `wctl.c` and `build.sh`: a Win32 helper that runs inside a slot's Wine prefix (windows, posted messages, the harness block). |
 
 ## Quick start
 
@@ -39,6 +43,9 @@ python testing/game_slots.py unlock 2 my-lane
 - `lock N <owner> --wait SECONDS` queues: it prints who holds the slot and polls. `lock any <owner>` takes the first
   free slot from 2 up. `unlock N <owner>`, or `unlock N --force` to clear a stale lock of a finished lane.
 - Nothing here sends real mouse or keyboard input or takes focus. The window is found by PID, never by title.
+- Shared seats: with `<seats.dir>/budget.json` (`{"max_games": N}`) every lock also takes one of N machine-wide seats
+  `game.seat.K` (seat first, lock second; lock released first). Projects waiting for seats write
+  `game.want.<project>` and the others make room. See docs/testing.md "Shared seats".
 
 ## Command lines
 
@@ -69,6 +76,7 @@ Env vars: `MODKIT_SLOT`, `MODKIT_RUN`, `MODKIT_TESTING_CONFIG`.
 | `[logs]` | `loader_log`, `plugin_log`, `crash_dir`, `startup_line` |
 | `[harness]` | `shm_name`, `shm_name_shared`, `magic`, `block_bytes`, `command_offset`, `command_max`, `idx_*`, `flag_background`, `word_file`, `console_file`, `words`, `cursor_start` |
 | `[runs]` | `dir`, `screenshots_dir` |
+| `[seats]` | `dir`, `project`, `wait`, `yield_to`, `want_cap` |
 | `[checks]` | `modules`, `paths`, `start_timeout`, `echo_command`, `menu_min_mean`, `menu_min_stddev` |
 | `[release]` | `site_url`, `channel`, `seven_zip`, `apply_launch`, `extra_launch_args`, `channel_schema`, `manifest_schema`, `retries` |
 
