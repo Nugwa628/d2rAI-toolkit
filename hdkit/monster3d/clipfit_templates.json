@@ -1,0 +1,378 @@
+{
+ "_doc": "Pose templates of s5_clipfit.py and s5_limbfit.py per donor body type, and the clip names per classic mode. A template parameter turns each named bone by value x weight degrees about the world axis given (x: side axis, + leans forward; y: up; z: forward), about the bone's bind joint; 'cog' also takes the translations tx and tz (bind units). 'base' is the template's rest pose (bones turned before the parameters). biped_d2r fits a D2R biped bound in a T-pose (arms along x, bone names as the Dried Corpse's: cog, spine_01, chest, neck, head, L_/R_UpperArm, ForeArm, Wrist, Thigh, Calf, Foot, Ball); its base hangs the arms down. The arm parameters assume that T-pose bind: on it an x turn before the hang-down only twists the arm, so the arms never swing forward. s5_limbfit.py turns its arms after the hang-down instead (arm_fix, on by default; --old-arms is the old order); s5_clipfit.py still applies the template as written, so check the arm swing on a test pose for a new donor, and write a new template for an A-pose donor.",
+ "templates": {
+  "biped_d2r": {
+   "base": {
+    "L_UpperArm": [
+     0,
+     0,
+     -70
+    ],
+    "R_UpperArm": [
+     0,
+     0,
+     70
+    ],
+    "L_ForeArm": [
+     20,
+     0,
+     0
+    ],
+    "R_ForeArm": [
+     20,
+     0,
+     0
+    ]
+   },
+   "params": [
+    {
+     "name": "cog_rx",
+     "bones": {
+      "cog": [
+       1,
+       0,
+       0
+      ]
+     },
+     "lo": -60,
+     "hi": 200,
+     "step": 12
+    },
+    {
+     "name": "cog_ry",
+     "bones": {
+      "cog": [
+       0,
+       1,
+       0
+      ]
+     },
+     "lo": -60,
+     "hi": 60,
+     "step": 12
+    },
+    {
+     "name": "cog_rz",
+     "bones": {
+      "cog": [
+       0,
+       0,
+       1
+      ]
+     },
+     "lo": -60,
+     "hi": 60,
+     "step": 10
+    },
+    {
+     "name": "tx",
+     "translate": [
+      1,
+      0,
+      0
+     ],
+     "lo": -2.5,
+     "hi": 2.5,
+     "step": 0.4
+    },
+    {
+     "name": "tz",
+     "translate": [
+      0,
+      0,
+      1
+     ],
+     "lo": -2.5,
+     "hi": 3.5,
+     "step": 0.4
+    },
+    {
+     "name": "bend",
+     "bones": {
+      "spine_01": [
+       1,
+       0,
+       0
+      ],
+      "chest": [
+       0.7,
+       0,
+       0
+      ]
+     },
+     "lo": -40,
+     "hi": 70,
+     "step": 10
+    },
+    {
+     "name": "side",
+     "bones": {
+      "spine_01": [
+       0,
+       0,
+       1
+      ],
+      "chest": [
+       0,
+       0,
+       0.7
+      ]
+     },
+     "lo": -40,
+     "hi": 40,
+     "step": 8
+    },
+    {
+     "name": "twist",
+     "bones": {
+      "spine_01": [
+       0,
+       1,
+       0
+      ],
+      "chest": [
+       0,
+       0.7,
+       0
+      ]
+     },
+     "lo": -45,
+     "hi": 45,
+     "step": 10
+    },
+    {
+     "name": "head_rx",
+     "bones": {
+      "neck": [
+       0.5,
+       0,
+       0
+      ],
+      "head": [
+       1,
+       0,
+       0
+      ]
+     },
+     "lo": -70,
+     "hi": 70,
+     "step": 10
+    },
+    {
+     "name": "head_rz",
+     "bones": {
+      "neck": [
+       0,
+       0,
+       0.5
+      ],
+      "head": [
+       0,
+       0,
+       1
+      ]
+     },
+     "lo": -60,
+     "hi": 60,
+     "step": 10
+    },
+    {
+     "name": "head_ry",
+     "bones": {
+      "head": [
+       0,
+       1,
+       0
+      ]
+     },
+     "lo": -45,
+     "hi": 45,
+     "step": 10
+    },
+    {
+     "name": "Larm_fwd",
+     "bones": {
+      "L_UpperArm": [
+       -1,
+       0,
+       0
+      ]
+     },
+     "lo": -90,
+     "hi": 150,
+     "step": 20
+    },
+    {
+     "name": "Larm_out",
+     "bones": {
+      "L_UpperArm": [
+       0,
+       0,
+       1
+      ]
+     },
+     "lo": -40,
+     "hi": 110,
+     "step": 15
+    },
+    {
+     "name": "Lelbow",
+     "bones": {
+      "L_ForeArm": [
+       -1,
+       0,
+       0
+      ]
+     },
+     "lo": -10,
+     "hi": 120,
+     "step": 20
+    },
+    {
+     "name": "Rarm_fwd",
+     "bones": {
+      "R_UpperArm": [
+       -1,
+       0,
+       0
+      ]
+     },
+     "lo": -90,
+     "hi": 150,
+     "step": 20
+    },
+    {
+     "name": "Rarm_out",
+     "bones": {
+      "R_UpperArm": [
+       0,
+       0,
+       -1
+      ]
+     },
+     "lo": -40,
+     "hi": 110,
+     "step": 15
+    },
+    {
+     "name": "Relbow",
+     "bones": {
+      "R_ForeArm": [
+       -1,
+       0,
+       0
+      ]
+     },
+     "lo": -10,
+     "hi": 120,
+     "step": 20
+    },
+    {
+     "name": "Lleg_fwd",
+     "bones": {
+      "L_Thigh": [
+       -1,
+       0,
+       0
+      ]
+     },
+     "lo": -60,
+     "hi": 110,
+     "step": 15
+    },
+    {
+     "name": "Lleg_out",
+     "bones": {
+      "L_Thigh": [
+       0,
+       0,
+       1
+      ]
+     },
+     "lo": -20,
+     "hi": 40,
+     "step": 8
+    },
+    {
+     "name": "Lknee",
+     "bones": {
+      "L_Calf": [
+       1,
+       0,
+       0
+      ]
+     },
+     "lo": 0,
+     "hi": 130,
+     "step": 15
+    },
+    {
+     "name": "Rleg_fwd",
+     "bones": {
+      "R_Thigh": [
+       -1,
+       0,
+       0
+      ]
+     },
+     "lo": -60,
+     "hi": 110,
+     "step": 15
+    },
+    {
+     "name": "Rleg_out",
+     "bones": {
+      "R_Thigh": [
+       0,
+       0,
+       -1
+      ]
+     },
+     "lo": -20,
+     "hi": 40,
+     "step": 8
+    },
+    {
+     "name": "Rknee",
+     "bones": {
+      "R_Calf": [
+       1,
+       0,
+       0
+      ]
+     },
+     "lo": 0,
+     "hi": 130,
+     "step": 15
+    }
+   ]
+  }
+ },
+ "clip_names": {
+  "nu": "neutral",
+  "wl": "walk",
+  "gh": "gethit",
+  "a1": "attack1",
+  "a2": "attack2",
+  "bl": "block",
+  "sc": "cast",
+  "s1": "skill1",
+  "s2": "skill2",
+  "s3": "skill3",
+  "s4": "skill4",
+  "kb": "knockback",
+  "rn": "run"
+ },
+ "monster_keys": {
+  "_doc": "The keys of the monster config's \"clipfit\" block (common.mcfg('clipfit')).",
+  "template": "the template name above (default biped_d2r)",
+  "part_mask": "the colour test of the rigid part in classic's frames: {\"b_min\": B, \"b_over_rg\": D} passes opaque pixels with blue >= B and blue - max(red, green) > D; \"loose\": a looser test of the same shape for the outline check; \"edge_min\": the share of the part outline that must lie on loose-test pixels (default 0.62) for a frame's part mask to count",
+  "part_weight": "weight of the part IoU in the score (default 0.5)",
+  "edge_weight": "weight of our part outline on classic's part colour (default 0.5)",
+  "shell_bone": "the corpse shell bone, put under the floor in every written clip (default the monster's shell_bone)",
+  "shell_drop": "how far under the floor, in bind units (default 12)",
+  "loop": "the modes that loop (smoothing and Catmull-Rom wrap around), e.g. [\"wl\", \"nu\", \"rn\"]",
+  "camera": "the per-facing camera json {\"views\": {\"<facing>\": {\"az\": degrees}}}, a path under the work folder or absolute (looked up through the art store); \"caprim\" is accepted as an older name",
+  "el": "the elevation of classic's sprite camera in degrees (default 35)"
+ }
+}

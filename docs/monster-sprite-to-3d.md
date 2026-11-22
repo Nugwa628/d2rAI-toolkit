@@ -12,13 +12,14 @@ recommends hand building. The numbers quoted below are the Fungus's.
 > This repository stores no Blizzard or mod art. Everything that reads game files reads your own local copy. Large
 > outputs (meshes, bakes, textures) belong in a local art store (`hdkit/store.py`), not in git.
 
-**Tools in this repository.** The viewer, its browser page, the CASC cache, the MCP server and the sign-off wrapper are
-in `hdkit/` (`python -m hdkit.view`, `python -m hdkit.signoff`, [mcp/](../mcp/README.md)); the D2R format modules
-(GR2 models and clips, textures, the model index, DCC, COF, particles) are in `hdkit/formats/`. The stage scripts of
-this method (frames, design graph and Blender scripts, clip and corpse fits, death clips, the build) are not in the
-toolkit yet: they still carry the worked example's own settings and need a config pass first. Until they arrive, this
-guide is the method and the knowledge pages hold the engine facts: [knowledge/hd-graphics.md](../knowledge/hd-graphics.md)
-and [knowledge/hd-monsters.md](../knowledge/hd-monsters.md).
+**Tools in this repository.** The stage scripts of this method are `python -m hdkit.monster3d <script> --monster
+<monster.json> ...` ([section 20](#20-commands) lists every command, [section 21](#21-the-monster-config) the
+monster config). The viewer, its browser page, the CASC cache, the MCP server and the sign-off are in `hdkit/`
+(`python -m hdkit.view`, `python -m hdkit.signoff`, [mcp/](../mcp/README.md)); the D2R format modules (GR2 models and
+clips, textures, the model index, skeletons, DCC, COF, classic frames, particles) are in `hdkit/formats/`.
+[examples/monster3d/](../examples/monster3d/README.md) runs the route on vanilla files only, and holds the worked
+example's monster config and design, shape and paint inputs (numbers only). The engine facts are in
+[knowledge/hd-graphics.md](../knowledge/hd-graphics.md) and [knowledge/hd-monsters.md](../knowledge/hd-monsters.md).
 
 ## Contents
 
@@ -41,6 +42,8 @@ and [knowledge/hd-monsters.md](../knowledge/hd-monsters.md).
 17. What did not work
 18. Checklist
 19. Cost
+20. Commands
+21. The monster config
 
 ---
 
@@ -306,8 +309,11 @@ Capture:
 - a group shot with the player at play distance;
 - the asserts, crash reports and fps.
 
-`python -m hdkit.signoff` does this run and the sheet (its game half needs your test framework and a dev plugin with
-the harness verbs `spawn`, `place`, `facing`, `mcast` and `kill`; see `hdkit/signoff/run.py`).
+`python -m hdkit.signoff` does this run and the sheet. Its game half goes through a backend
+([hdkit/signoff/backend.py](../hdkit/signoff/backend.py): the built-in Linux and Windows ones, or your project's own)
+and a seat hook that keeps a machine-wide budget of running games (`seats = "testing"` uses the toolkit's own seats in
+`testing/`). The game needs a test plugin with the harness verbs `spawn`, `place`, `facing`, `mcast`, `kill` and
+`move`: [hdkit/signoff/HARNESS.md](../hdkit/signoff/HARNESS.md) documents each one.
 
 Then render each captured (facing, mode, time) in the viewer and make a game | viewer | outline sheet. Write down
 every difference (glow and bloom first) and decide each one: fix it, or accept it.
@@ -384,3 +390,70 @@ Measured on the Fungus, with one agent working at a time on a single desktop PC 
 
 For a second monster of the same body type the tools exist. Expect about one day in the viewer and one sign-off
 session. A new body type adds a donor choice, a pose template and a corpse plan.
+
+## 20. Commands
+
+Every script runs as `python -m hdkit.monster3d <script> --monster <monster.json> [args]` from the repository root
+(`python -m hdkit.monster3d` lists them; the usage of each is at the top of its file). The Blender steps run inside
+Blender: `blender -b --factory-startup -noaudio --python hdkit/monster3d/blender/<script>.py -- <step> <work dir>`.
+Run memory-heavy steps under a limit (`prlimit --as=10000000000` on Linux). A stage is a folder with `overlay/` (the
+unit's files laid out like a mod's `data/`), `skinned_lod<k>.npz` and `build.json`; each step reads one stage and
+writes a new one, so every step can be compared and undone.
+
+| Step | Command | Notes |
+|-|-|-|
+| 1 reference | `s1_frames classic` | every mode x 8 facings and `frames.json` (boxes, COF timing); `s1_frames up MODE:FRAME` upscales 4x with Real-ESRGAN (optional) |
+| base stage | `s0_base <stage>` | the donor's own models, textures (at 2048) and clips under the new unit's name |
+| 3 skeleton, procedural body | `s4_procbody build <src> <dst> [--params body.json]` | skeleton edit, clip retarget, tube body; `shell` and `heaptint` make the corpse shell and its colours |
+| 4 shape | `s4_hdbody design <src> W [--params] [--design]`, Blender `hdbody_bl.py -- model W`, `s4_hdbody shape W [--shape] [--paint]` | the design graph, skin modifier and subdivision, displacement and paint |
+| 4 rigid radial part | `s4_hdcap design <src> W [--cap part.json] [--paint part_paint.json]`, Blender `hdcap_bl.py -- preview W` / `-- bake W` | a cap, shell or shield on its own bone, on the frame of the fitted part; `s4_hdcap shell` and `corpse` rebuild the corpse shell |
+| 5 bake | Blender `hdbody_bl.py -- bake W [--size 2048] [--ao-samples 64]` | UVs packed into free texels, Cycles bakes, LOD meshes |
+| 6 weights, build | `s4_hdbody weights W [--smooth 30] [--min-w 0.02]`, `s4_hdbody build <src> <dst> W [--params]` | models, textures spliced outside protected texels, clips, skeleton |
+| 6 checks | `s5_stretch <overlay>`, `s4_smoothnormals <stage>`, `s4_lods <dir> <out>`, `s3_gutter <overlay> <skinned_lod0.npz>` | stretch per clip; normal smoothing; Blender decimate LODs; gutter fill |
+| 7 material, glow | `s3_bodymat labels|apply|measure`, `s5_glow <overlay> <albedo> <relit> <part.png>` | body material by labels; the self-lit layer from the Fire Golem's object effect in your extraction |
+| 8 clips | `s5_clipfit fit --mode <m> <stage> <frames> <out.json>`, `s5_clipfit write <stage> <clip.json>...`, `s5_limbfit fit|write|measure` | whole-pose fit over 8 facings; limb refit on a held trunk |
+| 9 death and corpse | `s5_death <overlay> [--shell ...]`, `s5_corpsefit <skinned_lod0.npz> <frames> <camera.json> <pose.json>`, `s4_hdcorpse fit|settle|tex` | own death and dead clips; corpse pose fit, settle and corpse texels |
+| 10 the mesh route | `s5_build <mesh_lods.npz> <albedo.png> <overlay>` | builds a stage from any mesh set (skinned by `hdkit.sprite3d.rig_fit`); not needed for the hand-built route |
+| viewer loop | `g7_viewersheet <frames> <out.png> --stage <label>=<overlay> ...` | classic against one or more stages in every mode x 8 facings; then `python -m hdkit.view` for close-ups and turntables |
+| art store | `python -m hdkit.monster3d.store put|fetch|where|check` | large stage files out of the work folder into the content-addressed store |
+| sign-off | `python -m hdkit.signoff all <token>` | one game run through the backend (section 15) |
+
+The camera file the fits take (`camera.json`: `{"views": {"<facing>": {"az": degrees}}}`) is optional: without one
+(`clipfit.camera` unset, or `-` on the command line) the 8 facings are 45 degrees apart clockwise from "down", turned by
+`clipfit.az0`. Fitted cameras of classic sprites stay within a few degrees of that ring.
+
+The older routes (AI image-to-3D reconstruction and sprite projection, section 17) are not in the toolkit. TripoSG
+(MIT) could feed `s5_build` with a generated mesh; its weights are yours to download and never go in git.
+
+## 21. The monster config
+
+What differs per monster lives in one JSON file. Every key is optional except `name` and `donor`; the defaults are in
+`hdkit/monster3d/common.py` (`MONSTER_DEFAULTS`). [examples/monster3d/fungus/monster.json](../examples/monster3d/fungus/monster.json)
+is the worked example's.
+
+| Key | Meaning |
+|-|-|
+| `name` | file-safe name of the unit's files |
+| `token` | the classic monster token (`data/global/monsters/<token>/`) of the reference frames; `act`: its palette |
+| `unit_prefix`, `unit` | the unit JSON is `hd/character/enemy/<unit>.json` (default `m3d_<name>`) |
+| `folder`, `vfx_particles`, `vfx_textures` | where the unit's files go (defaults under `.../m3d/<name>`) |
+| `donor`, `profile` | the vanilla unit whose skeleton, state machine and clips are reused; the rig profile of `hdkit.sprite3d.rig_fit` |
+| `K` | the upright mesh (height 1) in game units (mesh route) |
+| `rigid_part`, `part_bone` | `[c, m]`: everything above the plane y = c + m z is one rigid part, bound to `part_bone` alone |
+| `shell_bone` | the spare bone that carries the corpse shell |
+| `keep` | donor material maps left as they are |
+| `weapon_attach`, `weapon_bone`, `weapon_length` | an optional rigid weapon (`s5_build --weapon`) |
+| `clipfit` | `template` (from `hdkit/monster3d/clipfit_templates.json`), `part_mask` (the part's colour test in classic's frames), `part_weight`, `edge_weight`, `shell_drop`, `loop`, `camera` or `az0`, `el` |
+| `death` | `length`, `detach`, `land`, `dt_frames`, `dt_fps`, `dd_dy`, `keys`, `pivot_z`, `head_bone`, `cog_bone` |
+| `corpse` | `dd_part_box` (the part's box in each DD facing), `timing` |
+| `glow` | `source`: the object effect copied from your extraction (default the Fire Golem's) |
+| `body` | `params` (overrides of the body parameters), `rect` (a free atlas rectangle), `corpse_paint` |
+
+Machine settings (work folder, D2R extract, Blender) come from `hdkit.toml` `[monster3d]` or the `HDKIT_M3D_*`
+environment variables (`hdkit/hdkit.example.toml`).
+
+**Limits of the scripts today.** They assume a biped donor with a T-pose bind and the bone names of D2R's human
+monsters (`mummy1` style), a corpse-shell bone, and (for `s4_hdcap` and the part terms of the fits) one rigid part on
+its own bone. A monster without a rigid part runs through `s0_base`, `s4_procbody` and `s4_hdbody` (the example does);
+other body types need their own template in `clipfit_templates.json` and checks of the bone lists in `s5_limbfit.py`
+and `s5_death.py`.

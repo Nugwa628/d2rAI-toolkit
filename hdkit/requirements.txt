@@ -4,6 +4,10 @@ numpy>=1.26          # BSD-3-Clause
 Pillow>=10           # MIT-CMU (HPND)
 scipy>=1.11          # BSD-3-Clause
 wgpu>=0.19           # BSD-2-Clause: the GPU renderer of hdkit.view (render, sheet, turntable, maps in HD)
+# hdkit.monster3d (the sprite-to-3D monster scripts) also needs:
+scikit-image>=0.22  # BSD-3-Clause: convex hulls in the clip and corpse fits
+numba>=0.59         # BSD-2-Clause: hdkit.sprite3d.render_soft, the no-GPU renderer of the fits
+# and Blender 4.5 LTS as an outside program (GPL; HDKIT_M3D_BLENDER or `blender` on PATH), never pip-installed
 # optional
 # mcp>=1.2           # MIT: only for the MCP server (mcp/README.md)
 # imageio-ffmpeg     # BSD-2-Clause wrapper (its ffmpeg binary is a GPL build, local only): MP4 output of sheets

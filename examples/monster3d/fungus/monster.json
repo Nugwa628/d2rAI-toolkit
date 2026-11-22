@@ -1,0 +1,123 @@
+{
+ "_doc": "The monster config of the guide's worked example (docs/monster-sprite-to-3d.md): a small biped with a mushroom cap, built on the vanilla Dried Corpse (mummy1). Numbers only; the classic art it was fitted to is not in this repository, so set token to the classic token of your own monster. The cap is the rigid part (rigid_part, part_bone); the corpse shell rides on loin_cloth.",
+ "name": "fungus",
+ "token": "",
+ "donor": "mummy1",
+ "profile": "mummy1",
+ "K": 9.2,
+ "rigid_part": [
+  0.77,
+  0.31
+ ],
+ "part_bone": "jaw",
+ "shell_bone": "loin_cloth",
+ "keep": [],
+ "act": 1,
+ "clipfit": {
+  "template": "biped_d2r",
+  "part_mask": {
+   "b_min": 120,
+   "b_over_rg": 50,
+   "loose": {
+    "b_min": 110,
+    "b_over_rg": 45
+   },
+   "edge_min": 0.62
+  },
+  "part_weight": 1.0,
+  "edge_weight": 0.0,
+  "shell_bone": "loin_cloth",
+  "shell_drop": 12.0,
+  "loop": [
+   "wl",
+   "nu",
+   "rn"
+  ],
+  "az0": 3.0,
+  "el": 35.0
+ },
+ "death": {
+  "length": 0.76,
+  "detach": 0.5,
+  "land": 0.6,
+  "dt_frames": 19,
+  "dt_fps": 25
+ },
+ "corpse": {
+  "dd_part_box": {
+   "0": [
+    80,
+    127,
+    47,
+    96
+   ],
+   "1": [
+    16,
+    55,
+    36,
+    88
+   ],
+   "2": [
+    27,
+    71,
+    1,
+    38
+   ],
+   "3": [
+    90,
+    132,
+    6,
+    48
+   ],
+   "4": [
+    110,
+    138,
+    23,
+    76
+   ],
+   "5": [
+    38,
+    94,
+    53,
+    111
+   ],
+   "6": [
+    9,
+    40,
+    13,
+    63
+   ],
+   "7": [
+    55,
+    107,
+    0,
+    26
+   ]
+  }
+ },
+ "glow": {},
+ "body": {
+  "corpse_paint": {
+   "torso_rgb": [
+    104,
+    114,
+    158
+   ],
+   "torso_var": 0.3,
+   "leg_rgb": [
+    52,
+    56,
+    74
+   ],
+   "leg_pale": [
+    122,
+    136,
+    184
+   ],
+   "leg_pale_share": [
+    0.55,
+    0.35
+   ]
+  }
+ }
+}

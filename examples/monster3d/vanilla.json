@@ -1,0 +1,16 @@
+{
+ "_doc": "A monster config for the art-free example: the Dried Corpse rebuilt on its own vanilla HD unit (classic token MM, donor mummy1). Every key is explained in docs/monster-sprite-to-3d.md, 'The monster config'. part_bone and shell_bone name the donor's spare bones the hand-built steps use (jaw: a rigid part; loin_cloth: the corpse shell). body.params.hd_cap false: this monster has no designed rigid part (s4_hdcap.py).",
+ "name": "example_mummy",
+ "token": "mm",
+ "donor": "mummy1",
+ "profile": "mummy1",
+ "K": 9.2,
+ "act": 1,
+ "part_bone": "jaw",
+ "shell_bone": "loin_cloth",
+ "body": {
+  "params": {
+   "hd_cap": false
+  }
+ }
+}

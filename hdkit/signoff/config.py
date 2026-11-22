@@ -15,7 +15,10 @@ Keys (paths are strings; None = not set):
   lock_holder      the name the slot lock and the run carry
   capture          {"client": [w, h], "feet_px": [x, y], "player_box": [x0, y0, x1, y1]} of the game captures
                    (defaults: D2R's HD camera at 1600x900, hdkit.view.camera)
-  backend          "auto" (by platform), "linux" or "windows": how a game run is made (run.py)
+  backend          "auto" (by platform), "linux", "windows" or "<module>:<attribute>" (a project's own Backend):
+                   how a game run is made (backend.py, run.py)
+  seats            the seat/budget hook around every run: "none", "testing" (the toolkit's testing/ seats) or
+                   "<module>:<attribute>" (backend.py); seats_config: its testing.toml; seat_wait: seconds to wait
   windows          {"heavy_lock": script, "heavy_token": token, "worktree_root": dir, "gamerun": monster3d g6_gamerun.py,
                     "framework_tools": tools dir with game_checks.py, "m3d_env": env name g6_gamerun reads its folder from,
                     "framework_env": env name g6_gamerun reads its framework checkout from, "check": the check name
@@ -40,6 +43,7 @@ DEFAULTS = {
     "lock_holder": "hdkit-signoff",
     "capture": {"client": [1600, 900], "feet_px": [800.0, 437.5], "player_box": [752, 278, 848, 450]},
     "backend": "auto",
+    "seats": "none", "seats_config": None, "seat_wait": 0,
     "windows": {"heavy_lock": None, "heavy_token": "game", "worktree_root": None, "gamerun": None, "framework_tools": None,
                 "m3d_env": None, "framework_env": None, "check": None, "runner": None},
     "linux": {"framework_tools": None, "dev_plugin": None, "plugin_dest": None, "mod_data": None, "cpu_max": 60,

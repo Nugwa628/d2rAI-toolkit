@@ -11,5 +11,9 @@ A project can replace the site rules with its own module `hdkit_site` on sys.pat
   hdkit.view      the offline viewer and renderer (`python -m hdkit.view ...`), the map viewer (`... map ...`), the browser
                   pages and the MCP server
   hdkit.maps      classic maps in HD: mod data overlays and minimap (automap) rows (`python -m hdkit.maps ...`)
-  hdkit.signoff   the in-game sign-off of a 3D unit against the viewer (`python -m hdkit.signoff ...`)
+  hdkit.signoff   the in-game sign-off of a 3D unit against the viewer (`python -m hdkit.signoff ...`); its game half
+                  goes through a backend and a seat hook (hdkit/signoff/backend.py, HARNESS.md)
+  hdkit.sprite3d  the fitting camera, the no-GPU renderer, the rig carry and the frame upscale the 3D routes share
+  hdkit.monster3d the sprite-to-3D monster scripts (`python -m hdkit.monster3d <script> --monster <monster.json>`,
+                  docs/monster-sprite-to-3d.md)
 """

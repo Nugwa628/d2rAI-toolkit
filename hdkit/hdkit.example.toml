@@ -35,3 +35,11 @@ preset_subdir = ""               # if your build moves the mod's own map presets
 # id = "mymonster"               # its monstats Id
 # name = "mymonster"
 # stage = "mymonster/stages/5-build"
+
+[monster3d]
+# Settings of the sprite-to-3D monster scripts (python -m hdkit.monster3d; docs/monster-sprite-to-3d.md). The environment
+# variables HDKIT_M3D_DIR, HDKIT_M3D_D2R, HDKIT_M3D_BLENDER and HDKIT_M3D_REALESRGAN win over these.
+# work = ""                      # stages, shots, logs per monster (default <work>/monster3d)
+# d2r_data = ""                  # D2R's own data folder holding hd/character/enemy/<donor>/... (default <d2r_extract>/data)
+# blender = ""                   # Blender 4.5 LTS (default `blender` on PATH); GPL, run as a separate process only
+# realesrgan = ""                # realesrgan-ncnn-vulkan, only for `s1_frames up` (optional)

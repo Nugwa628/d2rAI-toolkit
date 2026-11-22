@@ -288,7 +288,7 @@ with 0 errors, installs with the game closed, and adds a row to the project's `T
 | Path | What's inside |
 |---|---|
 | [`modkit/`](modkit/) | The Python toolkit (`py -3 -m modkit -h`): CASC reading, tables, strings, UI layouts, sprites/PNG/DC6, HD maps, patch ops, the `skill` op, validator, installer, save editor |
-| [`hdkit/`](hdkit/) | Classic art in HD: the offline HD viewer and renderer (`python -m hdkit.view`, browser page, CASC cache), the map viewer, map tools (`python -m hdkit.maps`: overlays, minimap rows), the in-game sign-off (`python -m hdkit.signoff`), the GPU gate, the art store, GR2 / glTF / texture / DCC formats. Config in `hdkit.toml` |
+| [`hdkit/`](hdkit/) | Classic art in HD: the offline HD viewer and renderer (`python -m hdkit.view`, browser page, CASC cache), the map viewer, map tools (`python -m hdkit.maps`: overlays, minimap rows), the in-game sign-off (`python -m hdkit.signoff`, with a pluggable game backend and seat hook), the sprite-to-3D monster scripts (`python -m hdkit.monster3d`, [docs/monster-sprite-to-3d.md](docs/monster-sprite-to-3d.md)), the GPU gate, the art store, GR2 / glTF / texture / DCC formats. Config in `hdkit.toml` |
 | [`mcp/`](mcp/) | Setup of the hdkit MCP server, so an agent can render, compare and inspect models and maps and get pictures back |
 | [`knowledge/`](knowledge/README.md) | How D2R works for modders: limits, new game systems, tables, HD art, layouts, strings, saves, reverse engineering, addresses, debugging, porting |
 | [`.claude/skills/`](.claude/skills/) | Step-by-step guides the agent follows ([list below](#skills)) |
