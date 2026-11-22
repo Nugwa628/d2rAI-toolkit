@@ -8,6 +8,10 @@ with the game under Proton (`docs/linux.md`).
 ## Where things are
 - `modkit/`: the Python toolkit (`python -m modkit -h`). A mod is a project folder of JSON patches applied to the
   pristine game files; see knowledge/modkit-ops.md for every op.
+- `hdkit/`: classic art in HD and the offline HD viewer (`python -m hdkit.view`, `python -m hdkit.maps`,
+  `python -m hdkit.signoff`; config `hdkit.toml`, from `hdkit/hdkit.example.toml`). `mcp/`: its MCP server for agents.
+  Large outputs go to the art store, never into git. HD topics: `knowledge/hd-maps.md`, `knowledge/hd-monsters.md`,
+  `knowledge/hd-viewer.md`.
 - `knowledge/`: what D2R hard-codes and how its files work (limits, tables, strings, layouts, saves, HD graphics,
   reverse engineering, debugging). Read `knowledge/engine-limits.md` before designing anything big, and the topic
   file before working in an area. A whole new game system (for example a mapping system) starts with
@@ -48,6 +52,7 @@ with the game under Proton (`docs/linux.md`).
   - `d2r-items`: items, affixes and drops.
   - `d2r-monsters`: monsters and areas.
   - `d2r-ui`: layouts, panels and grids.
+  - `d2r-hd`: classic maps, monsters and effects in HD (with the hdkit viewer and knowledge/hd-*.md).
   - `d2r-cube`: recipes.
   - `d2r-engine`: plugins, reverse engineering and new game systems (with knowledge/new-game-systems.md).
   - `d2r-debug`: crashes and wrong behaviour.

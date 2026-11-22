@@ -1,0 +1,37 @@
+# Config of hdkit (the HD viewer, map tools, MCP server and sign-off). Copy to ./hdkit.toml and edit,
+# or point the environment variable HDKIT_CONFIG at your copy. Every key is optional.
+# Relative paths are relative to this file. "~" is your home folder. A JSON file with the same keys also works.
+
+[paths]
+work = "~/hdkit-work"            # renders, map working copies, sign-off evidence, the CASC cache
+art_store = ""                   # content-addressed store for large outputs ("" = none). Never inside the git repo.
+rounds = ""                      # review rounds shown on the map page (default <work>/rounds)
+
+[game]
+# A D2R folder whose CASC storage the viewer reads base files from, on demand, into a capped cache.
+# Read only. Best a test copy of the game (see testing/README.md), so a run of your own game never collides with it.
+dir = ""                         # e.g. "D:/d2r-slots/slot-2" or "~/Games/d2r-test"
+casc_cache = ""                  # default <work>/cache/casc
+casc_cache_gb = 4.0
+casc_seeds = []                  # folders with game files you extracted earlier; read first, never written
+casclib = ""                     # CascLib.dll / libcasc.so; default modkit's (MODKIT_CASCLIB, build/CascLib)
+
+[locks]
+# Lock files that mean "a game run is in progress": GPU jobs and CASC reads wait while one exists.
+# With the testing tools this is the slot lock folder, e.g. "~/modkit-runs/locks/game.lock*".
+globs = []
+
+[mod]
+classic = ""                     # your mod's classic files: a folder with data/global/tiles and data/global/excel
+data = ""                        # your built mod's data folder (with hd/...), e.g. "examples/showcase/out/data"
+d2r_extract = ""                 # D2R's own files; default modkit's cache d2r-data/<build>
+preset_subdir = ""               # if your build moves the mod's own map presets to hd/env/preset/<subdir>/
+
+[signoff]
+# Settings of python -m hdkit.signoff (see hdkit/signoff/config.py for every key). Example:
+# slots = [2]
+# area = 2
+# [signoff.units."ab"]           # a monster token
+# id = "mymonster"               # its monstats Id
+# name = "mymonster"
+# stage = "mymonster/stages/5-build"

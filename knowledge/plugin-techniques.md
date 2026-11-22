@@ -1,4 +1,4 @@
-# Plugin techniques: belt refill, buff HUD, weapon swap, waypoint UI, many clients, Wine
+# Plugin techniques: belt refill, buff HUD, weapon swap, waypoint UI, many clients, Wine, sprite-card facing
 
 How to build common quality-of-life plugin features on D2R 3.3 build 93847 with D2RLoader 1.3.1 (PluginSDK 0.3.0)
 without fighting the engine. Techniques only; the hooks and offsets they use are in
@@ -114,3 +114,53 @@ fail there. What was found (D2R 3.4, Proton Experimental 11; details and code in
 - **Memory probes:** read game structures only where `VirtualQuery` says the memory is committed and readable. A probe
   that relies on SEH to catch a bad read still makes D2R's last-resort handler write a crash report for the handled
   first-chance exception, on Windows and under Wine alike.
+
+## 7. Sprite-card facing
+
+An HD monster drawn as an animated card of its classic frames ([hd-monsters.md](hd-monsters.md)) shows one direction
+whatever way it faces: no data route works. A plugin can make it turn without writing into game objects, by changing
+only which clip the engine picks. Built and run in game on D2R 3.3 build 93847 (8 facings, every mode, 0 asserts, no fps
+cost); RVAs and entry bytes in [d2r-93847-addresses.md](d2r-93847-addresses.md#hd-unit-animation).
+
+**The data side.** The card unit binds one clip per facing under the first 8 weapon-class keys of each state's
+`animationBindings`, in the engine's own order: `hth` 0, `bow` 1, `1hs` 2, `1ht` 3, `stf` 4, `2hs` 5, `2ht` 6, `xbw` 7.
+Key k shows the k-th facing clockwise on screen from "down". A monster's own weapon class is `hth`, so without the plugin
+every state shows "down". Put the card units' state machines under a folder of your own (for example
+`data/hd/character/<mod>/flip/`): the hooks act only on machines whose asset path holds that marker and leave everything
+else at once.
+
+**Facing key.** A path's direction is 0-63 (direction 0 looks down the screen, higher ones turn clockwise). Eight keys
+as both the classic and the D2R engine count them: `key = ((direction & 63) + 4) >> 3 & 7` (60-63 and 0-3 -> 0, 4-11 ->
+1, ... 52-59 -> 7). Read it with the engine's own getters: unit -> path, path -> direction.
+
+**Three hooks.**
+
+| Hook | What it does |
+|-|-|
+| state transition `(machine, entity, &model, &state, weaponClass, speed, start, force)` | for a card machine only, replace the weapon class argument with the unit's facing key |
+| unit mode -> state (called per monster) | tell the transitions inside it which unit they belong to; afterwards, on the registry's own thread and only while the registry may be changed, check every watched card unit (at most 64) and, when its facing left the key its machine plays, call the engine's "same state, other weapon class" function, which keeps the clip's time |
+| unit translation layer update (once a frame, on the registry's thread) | the same check. Needed because a live monster gets its own mode call only when its mode changes: a lone card that walks or stands would never turn |
+
+Rules that made it safe:
+
+- Turn only on the registry's own thread while the world says the registry may be changed (world +0xa0 thread id,
+  +0x110 "mutable" byte; the registry getter asserts otherwise). Anything else (a stale unit, a changed unit id, a dead
+  entity, another thread, an unreadable name) ends the hook's own work and the game's function runs unchanged.
+- Compare the entry bytes of every function the part calls or wraps before installing anything; on any difference the
+  part installs nothing and logs that it is off.
+- Read watched units inside SEH, and only memory that `VirtualQuery` says is readable.
+
+**The assert it fixed.** `BC_ASSERT outAnimationTimeElapsed >= 0.0f (animation_controller.cpp:456)` fired on card units
+spawned after the first. A transition hands a start fraction (the monster's phase); the engine turns it into seconds while
+the new clip's loop count is still 0, which Granny reads as "for ever" (fraction x 1.9e38 s). A clip that loops for ever
+wraps that away; a card clip with counted loops stands at its end and the elapsed time goes negative. Fix: start card
+states at 0 and set `fraction x clip length` as the clip time after the call.
+
+**Routes ruled out.** Writing direction bones after the pose (per-frame writes into pose memory on the render path:
+larger, riskier); swapping the model or texture per direction (one model set per unit type, a reload per turn); a hook on
+the unit position read (fires on several threads, and turns still had to wait for the registry's thread).
+
+**Test harness verb `facing`.** A harness command `facing <monster id>` that prints the client monster's id, class, mode,
+path direction (0-63), facing key and position lets a game check shoot each facing on purpose (put the character where
+the spawned unit faces the key you want) and label every frame. The in-game sign-off (`python -m hdkit.signoff`,
+[hd-viewer.md](hd-viewer.md#the-in-game-sign-off)) relies on it.

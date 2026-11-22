@@ -31,7 +31,7 @@ Contents: [What works](#what-works) · [Slots under Proton](#slots-under-proton)
 
 | Part | On Linux |
 |-|-|
-| `modkit` (fetch, build, validate, install) | Native Python. CascLib builds with CMake as on Windows |
+| `modkit` (fetch, build, validate, install) | Native Python. CascLib builds with CMake as on Windows: `cmake -S third_party/CascLib -B build/CascLib -DCASC_BUILD_SHARED_LIB=ON && cmake --build build/CascLib`; modkit loads `build/CascLib/libcasc.so` (or `MODKIT_CASCLIB`) |
 | D2R + D2RLoader + plugins | Under Proton, in a prefix per test slot. Data mods and plugin mods both run |
 | Scripted game checks | End to end: launch, calibration screens, intro, main menu, a new character, in-game checks, quit, restore |
 | Clicks, keys, typed text, harness console | Yes, through the plugin's harness, once its input hooks accept Wine's syscall stubs ([below](#harness-input-under-wine)) |
