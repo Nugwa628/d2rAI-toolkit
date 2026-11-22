@@ -61,7 +61,8 @@ knowledge/hd-monsters.md, knowledge/hd-viewer.md.
    through Blender's skin modifier, parametric rigid parts, paint and bake, clips fitted over all 8 facings, death and
    corpse). Follow the engine rules E1-E14 in knowledge/hd-graphics.md. Pick monsters without mirrored facings first.
    Do not reconstruct the shape with AI image-to-3D or project the sprite as texture: both were tried and looked worse.
-   The stage scripts are not in the toolkit yet; write the steps from the guide.
+   The stage scripts are `python -m hdkit.monster3d <script> --monster <monster.json> ...` (the guide's command table;
+   examples/monster3d/ has a filled-in monster config and an art-free run).
 4. Render it in the viewer at the 8 facings and every mode next to classic before any game run.
 
 ## Skill and missile effects (knowledge/hd-graphics.md, "Effects from classic frames")

@@ -4,7 +4,8 @@ Commands:
   all <token>     prep + run + views: the whole sign-off, one sheet
   prep <token>    lay out the unit's build overlay (a monster3d stage: its small files, its large ones from the art store
                   by the stage folder's ART-MANIFEST.json, hash-checked) as <ev>/build/<stage>/overlay + build.json
-  run <token>     one foreground game run on a test slot (run.py; the backend is chosen at run time, config.backend):
+  run <token>     one foreground game run on a test slot through the backend and seat hook of the settings (backend.py;
+                  a project can plug in its own backend). The built-in backends:
                   Linux: the slot tools of the framework (slot lock, whole-slot snapshot, overlay and dev plugin laid in
                   before the launch, private X display, captures from that display only, restore, unlock);
                   Windows: the heavy lock -> run.py -> monster3d g6_gamerun.py (CPU check, slot lock, overlay laid over
@@ -32,7 +33,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -100,7 +100,7 @@ def prep(stage: str, ev: Path, log=print, glow_off: bool = False, s=None) -> Pat
 
 
 def run(a, overlay: Path) -> int:
-    """One game run on a test slot; the backend (config.backend) picks the slot tools of this platform."""
+    """One game run on a test slot through the backend and seat hook of the settings (backend.py)."""
     s = a.settings
     env = {"HDKIT_SIGNOFF_MODES": a.modes, "HDKIT_SIGNOFF_KEYS": a.facings, "HDKIT_SIGNOFF_AREA": "%d" % a.area,
            "HDKIT_SIGNOFF_TODWAIT": "%g" % a.tod_wait, "HDKIT_SIGNOFF_REACH": "%d" % a.reach,
@@ -108,17 +108,12 @@ def run(a, overlay: Path) -> int:
     if a.spot:
         env["HDKIT_SIGNOFF_SPOT"] = a.spot
     t0 = time.time()
-    if config.backend(s) == "linux":
-        from . import run as R
-        print("linux backend: slot %d, run %s, evidence %s" % (a.slot, a.tag, a.ev / "game"), flush=True)
-        rc = R.run_linux(s, a.tag, a.slot, a.token, a.id, overlay, a.ev / "game", env, dll=a.dll)
-    else:
-        w = s["windows"]
-        cmd = ["py", "-3", config.need(s, "windows", "heavy_lock"), w.get("heavy_token") or "game", s["lock_holder"], "--",
-               "py", "-3", str(HERE / "run.py"), a.tag, "--slot", str(a.slot), "--token", a.token, "--id", a.id,
-               "--overlay", str(overlay), "--ev", str(a.ev / "game")] + ["%s=%s" % kv for kv in env.items()]
-        print(" ".join(cmd), flush=True)
-        rc = subprocess.run(cmd, cwd=str(Path(config.need(s, "windows", "worktree_root")))).returncode
+    from . import backend as B
+    req = B.RunRequest(tag=a.tag, slot=a.slot, token=a.token, id=a.id, overlay=overlay, ev=a.ev / "game", env=env,
+                       dll=a.dll, holder=s["lock_holder"])
+    b = B.get(s)
+    print("%s backend: slot %d, run %s, evidence %s" % (b.name, a.slot, a.tag, a.ev / "game"), flush=True)
+    rc = B.run(s, req, log=lambda m: print(m, flush=True))
     print("game run exit %d after %d s" % (rc, time.time() - t0), flush=True)
     return rc
 
