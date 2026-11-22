@@ -1,0 +1,9 @@
+# hdkit (the HD viewer, map tools, sign-off). Install into a venv: python -m pip install -r hdkit/requirements.txt
+# modkit itself needs none of these.
+numpy>=1.26          # BSD-3-Clause
+Pillow>=10           # MIT-CMU (HPND)
+scipy>=1.11          # BSD-3-Clause
+wgpu>=0.19           # BSD-2-Clause: the GPU renderer of hdkit.view (render, sheet, turntable, maps in HD)
+# optional
+# mcp>=1.2           # MIT: only for the MCP server (mcp/README.md)
+# imageio-ffmpeg     # BSD-2-Clause wrapper (its ffmpeg binary is a GPL build, local only): MP4 output of sheets

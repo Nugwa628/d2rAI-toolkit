@@ -1,8 +1,8 @@
 # Knowledge base
 
 What a D2R overhaul mod runs into, learned from a large classic-to-D2R overhaul port. Target: **D2R 3.3.0
-build 93847** with **D2RLoader 1.3.1** (PluginSDK 0.3.0, ABI 4). Everything here uses only D2R's own files and engine:
-the toolkit has no MPQ/DC6/DCC conversion pipeline. Bringing a classic mod over (its tables, its engine DLL's
+build 93847** with **D2RLoader 1.3.1** (PluginSDK 0.3.0, ABI 4). Everything here uses only D2R's own files and engine;
+classic art a mod brings (DCC, DT1, DS1) is carried into HD with `hdkit/` (see the `hd-*` pages). Bringing a classic mod over (its tables, its engine DLL's
 rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 
 | File | What it covers |
@@ -10,7 +10,10 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [engine-limits.md](engine-limits.md) | Every hard-coded limit a mod hits: rule, symptom when broken, fix (data or plugin) |
 | [new-game-systems.md](new-game-systems.md) | Planning a new game system (for example a mapping system): data vs plugin, finding the hooks, where state lives, multiplayer, UI, lanes |
 | [tables.md](tables.md) | How D2R reads its `.txt` tables: banks, indexed vs keyed, IDs, adding rows safely, per-table cheat sheet |
-| [hd-graphics.md](hd-graphics.md) | HD assets: `.sprite` format, item/skill/panel art, HD json maps, overlays, player state machines, monsters |
+| [hd-graphics.md](hd-graphics.md) | HD assets: `.sprite` format, item/skill/panel art, HD json maps, overlays, player state machines, monsters, effects from classic frames, new models and textures (index files, mesh and texture formats) |
+| [hd-maps.md](hd-maps.md) | Classic map art in HD: how D2R builds a map's HD scene, the classic-tiles method (floors, walls, lower walls, black ground), 4x upscaling, per-map light from the classic tables, the minimap (automap rows, bright legacy cels, walls in the void) |
+| [hd-monsters.md](hd-monsters.md) | A monster with only classic art in HD: the animated sprite card (upscaling, brightness, facing by plugin) and a 3D model rebuilt from the sprite, with the engine rules for 3D monsters (normal map format, ORM alpha, corpse shells, vertex limits, clip fitting) |
+| [hd-viewer.md](hd-viewer.md) | The offline HD viewer (`hdkit.view`): commands, the map viewer, the game camera and light numbers, what its calibration can and cannot judge, the in-game sign-off, the GPU gate, the art store, outside tools and their licences |
 | [ui-layouts.md](ui-layouts.md) | `data/global/ui/layouts/*hd.json`: widget tree, grids, panels, tabs, stash/inventory/cube/skill tree |
 | [strings.md](strings.md) | String JSON files, complete-file replacement, safe new IDs, printf placeholder hazard |
 | [saves.md](saves.md) | `.d2s` v105 layout (retail and D2RLoader extended), checksum, `.d2rl` sidecar, safe and unsafe hand edits |
@@ -35,7 +38,7 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [crash-triage.md](crash-triage.md) | From a player's crash report to a fix: RVA from RIP, stack return addresses, Ghidra, which logs to ask for, a worked example |
 | [d2rloader.md](d2rloader.md) | D2RLoader facts and traps: default mod, the cache-building first start, other plugins, version checks, its files |
 | [porting-classic-mods.md](porting-classic-mods.md) | Porting a classic 1.13c-era mod: inventory, table-by-table conversion, ids that must not move, function numbers, events, art order |
-| [plugin-techniques.md](plugin-techniques.md) | Plugin feature recipes: belt refill, buff HUD from tables and the 25 fps clock, weapon swap, waypoint UI from actinfo, running many clients (shared Settings.json, RAM), plugins under Wine / Proton (syscall stubs, loader lock, missing fonts) |
+| [plugin-techniques.md](plugin-techniques.md) | Plugin feature recipes: belt refill, buff HUD from tables and the 25 fps clock, weapon swap, waypoint UI from actinfo, running many clients (shared Settings.json, RAM), plugins under Wine / Proton (syscall stubs, loader lock, missing fonts), sprite-card facing (clip per facing under the weapon-class keys) |
 | [sdk-gaps.md](sdk-gaps.md) | For the D2RLoader SDK author: every place plugins still hook or patch the game (build 93847 RVAs), what breaks, and the SDK service that would replace each patch, by priority (checked against PluginSDK 0.4.0) |
 | [modkit-ops.md](modkit-ops.md) | The modkit's patch operations (JSON ops applied by `modkit build`) |
 

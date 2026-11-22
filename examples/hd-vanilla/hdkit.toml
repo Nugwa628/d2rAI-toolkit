@@ -1,0 +1,12 @@
+# Template config for the vanilla example. Copy it next to you and set HDKIT_CONFIG to the copy.
+[paths]
+work = "~/hdkit-work/example"
+
+[game]
+dir = ""            # a D2R folder (best a test copy) whose CASC storage is read on demand, e.g. "~/Games/d2r-test"
+
+[locks]
+globs = []          # your test runs' lock files, e.g. "~/modkit-runs/locks/game.lock*"
+
+[mod]
+d2r_extract = ""    # D2R's own extracted tables and tiles (data/global/...); default modkit's d2r-data/<build>

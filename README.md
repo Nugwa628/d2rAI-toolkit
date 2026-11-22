@@ -288,6 +288,8 @@ with 0 errors, installs with the game closed, and adds a row to the project's `T
 | Path | What's inside |
 |---|---|
 | [`modkit/`](modkit/) | The Python toolkit (`py -3 -m modkit -h`): CASC reading, tables, strings, UI layouts, sprites/PNG/DC6, HD maps, patch ops, the `skill` op, validator, installer, save editor |
+| [`hdkit/`](hdkit/) | Classic art in HD: the offline HD viewer and renderer (`python -m hdkit.view`, browser page, CASC cache), the map viewer, map tools (`python -m hdkit.maps`: overlays, minimap rows), the in-game sign-off (`python -m hdkit.signoff`), the GPU gate, the art store, GR2 / glTF / texture / DCC formats. Config in `hdkit.toml` |
+| [`mcp/`](mcp/) | Setup of the hdkit MCP server, so an agent can render, compare and inspect models and maps and get pictures back |
 | [`knowledge/`](knowledge/README.md) | How D2R works for modders: limits, new game systems, tables, HD art, layouts, strings, saves, reverse engineering, addresses, debugging, porting |
 | [`.claude/skills/`](.claude/skills/) | Step-by-step guides the agent follows ([list below](#skills)) |
 | [`CLAUDE.md`](CLAUDE.md) | The agent's standing instructions and rules |
@@ -313,6 +315,7 @@ name it ("use d2r-port").
 | [`d2r-items`](.claude/skills/d2r-items/SKILL.md) | Base items, uniques, sets, runewords, affixes, drops, vendors, item art |
 | [`d2r-monsters`](.claude/skills/d2r-monsters/SKILL.md) | Monsters, bosses, monster skills, spawns, area levels, difficulty |
 | [`d2r-ui`](.claude/skills/d2r-ui/SKILL.md) | Inventory, stash and cube grids, panels, widget layouts, skill tree |
+| [`d2r-hd`](.claude/skills/d2r-hd/SKILL.md) | Classic art in HD: maps and the minimap, monsters as sprite cards or 3D models, effects as flipbooks; viewer first, then one in-game sign-off |
 | [`d2r-cube`](.claude/skills/d2r-cube/SKILL.md) | Horadric Cube recipes and their condition limits |
 | [`d2r-engine`](.claude/skills/d2r-engine/SKILL.md) | D2RLoader plugins, new engine functions, Ghidra reverse engineering |
 | [`d2r-debug`](.claude/skills/d2r-debug/SKILL.md) | Crashes, asserts, lost characters, wrong behaviour: logs, symptom to cause, bisecting |

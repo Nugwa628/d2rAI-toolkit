@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "hdkit-view": {
+      "command": "/path/to/venv/bin/python",
+      "args": ["/path/to/d2rAI-toolkit/mcp/hdkit_view_server.py"],
+      "env": {
+        "HDKIT_CONFIG": "/path/to/your/hdkit.toml",
+        "HDKIT_VIEW_ROOTS": "mod=/path/to/your-mod/out/data:casc"
+      }
+    }
+  }
+}

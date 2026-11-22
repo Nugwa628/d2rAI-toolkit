@@ -710,6 +710,28 @@ menu never opens** (type 0 doesn't). Hold such notices until the menu is up (cli
 | `0x147450` | loads `data/hd/global/excel/controllerskillsettings.json` (per skill `id`: usageType, targetGroup, toggleSlotState, tapWindowMS, ...); `0x14a970` "switch only" skills = `toggleSlotState` set (vanilla: the Paladin auras) |
 | `0x14b920` | quick-cast queue: drops the cast unless the usable test returns 0, 1, 2, 6, 8 or 9 |
 
+## HD unit animation
+
+Used by the sprite-card facing hooks ([plugin-techniques.md](plugin-techniques.md#7-sprite-card-facing)); each read in a
+decompiled listing and checked in game (hook logs, turns visible in shots).
+
+| RVA / offset | Meaning |
+|---|---|
+| `0xf61ae0` | state machine transition (machine, entity, &model, &state, weaponClass, speed, start, force) |
+| `0x773f30` | unit mode -> state (system, &model, unit, registry, unitType, mode, f); a live monster gets its own call only when its mode changes, a corpse every frame |
+| `0x77a3b0` | the client's HD unit translation layer update: once a frame on the registry's thread; drains the unit event queue at +0x1828 |
+| `0xf62330` | the same state again with another weapon class, clip time kept (machine, entity, &model, weaponClass, machine2, controller2) |
+| `0xf63186` | the weapon class key order: hth 0, bow 1, 1hs 2, 1ht 3, stf 4, 2hs 5, 2ht 6, xbw 7 |
+| `0x670a20` / `0x670540` | (registry, entity) -> state machine instance / animation controller component, or null |
+| `0x9124e0` | () -> the world that owns the entity registry; world +0xa0 the registry's thread id, +0x110 byte "registry may be changed now" |
+| `0x9125c0` | (world) -> registry; asserts off the world's thread or while +0x110 is 0. `0x122b140` returns the id it compares |
+| `0x34ae80` | (unit) -> path (unit +0x38) |
+| `0x341950` | (path) -> direction 0-63 (the float at path +0x80); `0x349fd0` turns it into the model's yaw; `0x3aeb30` (table `0x237ff10`) maps it to 8 directions |
+| `0xef19c0` | (controller) -> length of one loop of the clip it plays |
+| `0x1616b80` | (Granny control, seconds): set the control's time within its loop |
+| `0xef10b0` | Granny: a start fraction with loop count 0 becomes fraction x 1.9e38 s (the cause of `outAnimationTimeElapsed >= 0.0f`) |
+| state machine +0x08 asset (asset +0x08 file name pointer, +0x10 its length), +0x20 current state; state +0x04 stateId; unit model +0xa8 entity id; registry +0x30 / +0x38 entity ids begin / end | |
+
 ## Engine-side crashes not caused by mods
 
 | RVA | Meaning |
@@ -741,6 +763,9 @@ menu never opens** (type 0 doesn't). Hold such notices until the menu is up (cli
 | `0x5817f0` | `48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18` |
 | `0x581680` | `48 89 5C 24 18 48 89 6C 24 20 56 57 41 57` |
 | `0x44db20` | `48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 56 41 57 48 83 EC 50` |
+| `0xf61ae0` | `40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 E8 FE FF FF` |
+| `0x773f30` | `4C 8B DC 55 53 57 49 8D AB E8 FC FF FF 48 81 EC 00 04 00 00` |
+| `0x77a3b0` | `4C 8B DC 55 53 56 57 49 8D AB F8 FC FF FF 48 81 EC E8 03 00 00` |
 | `0xd8c70` | `40 53 48 83 EC 20 8B D9` (an 8-byte expected-bytes check; D2RLoader accepted it and the hook ran in game) |
 
 Table slots are written with `PatchWriteU64(table + 8*slot, expected, 8, function)`: expected 0 for an empty slot,

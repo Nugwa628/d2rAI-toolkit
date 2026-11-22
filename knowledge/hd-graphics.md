@@ -3,6 +3,10 @@
 D2R draws HD from `data/hd/...` and classic ("legacy", G key) from `data/global/...`. Both are loaded: some classic
 files are needed even in HD. A mod overrides any file by shipping the same path in its MPQ folder.
 
+Classic art carried into HD has its own pages: maps and the minimap in [hd-maps.md](hd-maps.md), monsters (sprite cards,
+facing, 3D models) in [hd-monsters.md](hd-monsters.md), the offline viewer, its calibration and the in-game sign-off in
+[hd-viewer.md](hd-viewer.md). The tools are the `hdkit/` package; the skill is `.claude/skills/d2r-hd`.
+
 ## `.sprite` (SpA1) format
 
 All HD UI pictures (items, panels, skill icons, buttons) are `.sprite` files, plus a `.lowend.sprite` at half size
@@ -121,6 +125,44 @@ the sprite build step. See [ui-layouts.md](ui-layouts.md).
   With its own classic files (COF/DCC + `animdata.d2` records) it keeps its own timing and classic art and only
   borrows the HD model.
 - `animdata.d2` (classic frame timing) must contain every Code+mode+weapon class used; merge D2R's file with yours.
+- A monster `Id` with no `monsters.json` row is **invisible in HD** and still fights: HD never falls back to the classic
+  sprite (game run). A stand-in model shows the stand-in's look, not the mod's art.
+- **A monster with only classic art** can be shown in HD two ways, both run in game:
+  - an **animated sprite card**: the classic frames, upscaled, on camera-facing cards, one clip per mode at the COF's
+    frame time. Sharp and right, but it shows one direction until a plugin picks the clip by facing
+    ([plugin-techniques.md](plugin-techniques.md#7-sprite-card-facing)), and it is lit, so it needs a colour gain of
+    about 1.35-1.5;
+  - a **3D model built by hand against the sprite**: a design graph through Blender's skin modifier, rigid parts as
+    parametric grids, a painted and baked texture, a D2R donor skeleton at the body's own lengths, and own clips fitted
+    to classic's frames over all 8 facings ([docs/monster-sprite-to-3d.md](../docs/monster-sprite-to-3d.md)).
+    Reconstructing the shape with an AI image-to-3D model and projecting the sprite as texture was tried first and
+    looked worse.
+  Both routes and their numbers: [hd-monsters.md](hd-monsters.md); the engine rules for 3D monsters are below
+  ([Engine rules for 3D monsters](#engine-rules-for-3d-monsters)).
+- Judge a new monster in the offline viewer first, then sign it off in one game run: [hd-viewer.md](hd-viewer.md).
+
+## Effects from classic frames
+
+A missile or overlay can show the mod's own classic frames in HD through D2R's particle system: the frames as a flipbook
+on one camera-facing, additive, unlit billboard whose atlas frame comes from the particle's age (25 fps). Proven in game
+for missiles (flight, burst, sub-missiles); overlays on units and directional missiles are not proven yet.
+
+| Property | From | Rule (one fit for all, observed) |
+|-|-|-|
+| Art, frame count | `CelFile` -> DCC, direction 0 | frames on black in one atlas |
+| Size | DCC box | billboard half edge = cell / 2 / 11.31 x 1.125 |
+| Anchor | DCC box and `zoffset` | lift = (-(y0 + h/2) - zoffset) / 9.798 world units |
+| Blend | `Trans` 1 | additive |
+| Colour | the art | one channel with the art's own ramp; art with several hues as three single-channel layers (red, green, blue) that add up exactly |
+| Light | `Light`, `Red`, `Green`, `Blue` | a copy of D2R's candle light particle, steady colour, reach 3 x `Light` |
+| Missiles of a skill | `skills.txt` and `missiles.txt` | follow every srv/clt missile, explosion and sub-missile: rows without a picture may still carry a light, and rows on vanilla art still show D2R's stock effect |
+
+- **Upscaler per sprite**: soft glows (orbs, auras, flashes) with Lanczos 2x; Real-ESRGAN turns a glow into a glossy
+  bubble with an outline (rim hardness 1.4x classic's). Hard-edged effects are expected to suit the AI upscaler (not
+  measured).
+- **Piles of copies**: classic adds overlapping copies in display space, HD in linear light, so 16 copies come out about
+  3.5x one copy, not 16x. A pile needs its own gain, which is wrong for a single copy elsewhere.
+- A new effect is made when its missile appears and shows one frame (up to 50 ms) later than classic.
 
 ## New models and textures at new paths
 
@@ -151,6 +193,54 @@ Other rules for new units:
 - Unit JSON, `monsters.json` and state machine JSON files are not indexed; any path works.
 - D2RLoader's ResourceService can serve plugin files at new paths too (limits: 256 MiB per plugin load, 64 MiB per
   file), but models still need the index entry. Plain mod-folder files are simpler.
+- `model_lod_desc.bin` stores bounds and mesh counts, **no vertex or index counts**, so a new mesh needs no padding to a
+  donor's counts. An entry with records of its own can hold any number of LODs and meshes (`hdkit/formats/model_lod_desc.py`
+  `add_own`). A donor file is still useful as a template for the Granny type tree and the material.
+- **Mesh limits**: 65,535 vertices per mesh with 16-bit indices (read unsigned; packing them signed caps a writer at
+  32,767); 32-bit indices above that (stock meshes reach 353,038 vertices). Prop models of 23,314 vertices and 27,739
+  triangles drew in game.
+- **Vertex format** (static and skinned): position int16[4] = q / 32767 x VertexScale (the mesh's ExtendedData), normal
+  and tangent int8[4] / 127 (tangent w = handedness), UV half floats; skinned parts add bone indices and weights uint8[4]
+  (weights sum to 255). Model space is glTF's: Y up, right-handed, 1 unit = 1 foot.
+- **Textures**: `.texture` header `<DE(`; formats seen: 0x3E (62) BC3 sRGB albedo, 0x3D (61) BC3 read linear for normal
+  and ORM maps, 0x3F BC4 masks, 0x1F RGBA8. Normal maps and ORM have traps: rules E3 and E5 below.
+- **Outside models** (glTF/GLB or OBJ, e.g. a CC0 model): normalise to Y up and a height in cells, decimate for the LODs,
+  write `.model` x N, albedo / normal / ORM `.texture`, and a `model_lod_desc.bin` entry; keep a licence record per asset.
+  A CC0 statue drew in game with the scene's lights and shadows this way. `hdkit/formats/` holds the readers and writers
+  (`d2r_model` for Granny GR2 `.model` / `.skeleton` / `.animations` with BitKnit2, `hd_gltf` for `.model` <-> `.glb`,
+  `d2r_texture`, `model_lod_desc`, `dcc`).
+- **A monster model built by hand against its classic sprite**: the worked method is
+  [docs/monster-sprite-to-3d.md](../docs/monster-sprite-to-3d.md), the overview and the routes in
+  [hd-monsters.md](hd-monsters.md#route-2-a-3d-model-built-by-hand-against-the-sprite).
+- Render and check any model offline before a game run: [hd-viewer.md](hd-viewer.md).
+
+### Engine rules for 3D monsters
+
+Found while building monster models from classic sprites (D2R 3.3 build 93847; game runs with every spawn drawn and 0
+asserts, and a survey of all 770 stock enemy LOD0 models). The guide
+[docs/monster-sprite-to-3d.md](../docs/monster-sprite-to-3d.md) refers to them by number.
+
+| # | Rule |
+|-|-|
+| E1 | **The root bone's translation is ignored.** Move the whole body with `cog` |
+| E2 | **Object-effect glow ends when the unit becomes a corpse**, whatever its fade, kill and render switches. A model-tracking layer in a `VfxDefinitionComponent` crashes at load (`BC_ASSERT m_modelPath.Data() != nullptr`). Put a corpse's light into its albedo |
+| E3 | **Normal maps are DXT5nm**: format 61 (BC3 read linear), R 255, G = y pointing **up** the texture, B 0, A = x, 128 = 0. Plain RGB normals are read as tangents, and the light then follows the UV charts |
+| E4 | **The floor hides everything below y = 0.** Fit and cull corpses against it |
+| E5 | **ORM alpha is a specular level** (R occlusion, G roughness, B metal, A specular). Roughness 255 with metal 0 is not matte while A is 255: set A 0 on matte parts |
+| E6 | **A black dielectric still reflects about 4 % of the environment.** A near-black part needs metal (for example metal = smoothstep of albedo L from 14 down to 4), or a matte, low-spec material with the albedo painted at the right level. No material switch of `VariantMaterial` (18 uniforms) darkens one part |
+| E7 | **65,535 vertices per mesh with 16-bit indices, read unsigned**; 32-bit indices above that (stock meshes reach 353,038 vertices). A writer that packs indices signed stops at 32,767 |
+| E8 | **Detail under about 15 texels at LOD0 density is lost at game size** (a 78 px wide part comes from about 1,000 texels: mip 3-4). Sculpt it and bake it into the normal map, or leave it out |
+| E9 | **The death-to-dead crossfade blends local bone transforms.** A body hidden under the floor by `cog` and a corpse shell coming up can both be under it for a frame: hand over inside DT and use a near-zero fade |
+| E10 | **A new model path needs a `model_lod_desc.bin` entry**, or it loads and never draws |
+| E11 | **Night light pushes a blue glow toward green**: set a glow colour bluer than the target |
+| E12 | **Frames lit by lightning spoil measurements**: drop a frame when its mean luminance is more than 1.3 times the middle value of the run |
+| E13 | **Object-pool asserts at exit and a launch-time crash report are engine noise**, present in plain runs too: check timestamps before blaming a model |
+| E14 | **The material's `EmissiveIntensity` has no visible effect** on these units (also with masks); self-lit parts use a stock glowing monster's object effect (an additive second draw of the skinned model through a UV mask; set its scripts' UV scale, offset and scroll to identity) |
+
+More, from the same work: timing comes from classic's COF (`fps = 25 x speed / 256`, frame i at i / fps), and new clips
+are written with the animation file's own curve types (rotations DaK32fC32f, the rest D4/D3Constant32f, about 60 keys a
+second, Duration = the mode length): there is no general Granny animation writer. Compare shapes only on frames matched
+by mode and facing, pooled over at least 3 runs.
 
 ## Stand-ins first
 
