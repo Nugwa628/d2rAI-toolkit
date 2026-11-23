@@ -245,7 +245,10 @@ Observed on a TCP/IP join to a hosted game (times from the TCP connect):
    - `0x59` the player, `0xa8` states on the player, `0x94` all skills;
    - the shared stash tabs, each as its own player-like unit (`0x59`, stats, states, `0x83` stash link); six on a
      fresh character, the count coming from `0x388c70` (3, plus configured extra tabs, plus 2 in a Garden game;
-     medium for the last terms);
+     medium for the last terms). Per tab, observed: `0x59`, five `0x20` (stats `0x43`, `0x44`, `0xc`, 0, 2), `0xa8`
+     states `0x69` and `0xba` (and `0xd1` on the last tab), `0x83` (flag C set on the last tab), `0x0d` action 8,
+     `0x76`, and `0x20` stat `0xf` (the tab's gold). **Every** joiner gets its own tabs, not only the game's creator:
+     in a two-player capture the creator was guid 1 with tabs 2-7 and the joiner guid 8 with tabs 9-`0xe`;
    - skill state `0x22`, `0x21`, `0x23`;
    - quest records `0x5e` (37 notIntro bytes), `0x28` type 6 with the player's own record, `0x29` (1.14d
      QUESTS_SequenceCycler `0x546270`), for a saved character too. A rejoin without the `0x28` leaves the client
@@ -274,6 +277,23 @@ player's stash-tab units, `0x23`, `0x06` end game; then the host closes the conn
 (`0x539da0`) sends the party's messages first, then the unit removals as the frame's room deletes. The leaving client
 needs little of this: its own `0x5a` type 3 followed by `0x06` returned it to the menu cleanly (observed against a
 custom game server, without the `0x75`s, `0x8d`, stash-unit `0x0a`s and `0x23`).
+
+**What the client checks in the load** (client handlers, build 93847, medium-high):
+
+- `0x59` with x and y 0 makes the unit but does not place it; `0x0b` makes it the local player.
+- `0x15` (handler `0x12ab40`) exits fatally when the placed unit has no room, so the start room's `0x07` must come
+  first. `0x04` (handler `0x1299b0`) exits fatally when the local player has no room, so `0x0b` and the placing `0x15`
+  must come before it.
+- The client builds the act from the map seed in `0x03` and takes **any object seed** there (a host's own value and a
+  different one both loaded).
+- The shortest load a client accepted against a custom host: `0x59`, `0x0b`, `0x03`, nine `0x07`, `0x15`, `0x04`.
+  It then asserts `sgbInit` (`Quest\Quests.cpp:92`) soon after unless `0x5e`, `0x28` type 6 and `0x29` were sent
+  ([quests-acts.md](quests-acts.md)), and it shows 0 gold without the vitals pass. A real host also sends the
+  player's alignment (`0xa8` state 105) right after `0x59` and again after `0x15`, `0x7e` and `0x53`; without it warp
+  tiles outside town cannot be clicked ([map-generation.md](map-generation.md) section 7).
+- In the burst, a room's units follow its `0x07`; the start room is sent twice and its first `0x07` carries nothing.
+  The units of rooms built by the load reach the client in later frames, room by room (the population runs a frame
+  after a room is built).
 
 A plugin that builds per-player state should key it on the player unit after `0x04` (state 4); before that the
 player may not exist yet. There is no engine "player joined" callback a plugin gets for free.
@@ -343,6 +363,27 @@ placed player its `0x28` type 6, then `0x89`. The client's quest-log request (C-
 
 **Level-up**, about one frame after the experience: `0x1d`-`0x1f` for the level stats and points, `0x95` refill,
 the experience message, `0x2c` sound to the player, `0x75` to all, `0x20` to the others.
+
+**Walking** (observed): each click sends a walk (`0x01`/`0x03` to a point, `0x02`/`0x04` to a unit) with the target,
+the client's own position and a path of 1 or 2 points, each preceded by a `0x6f` the host echoes as `0x2d`. About
+150 ms later the client sends it again with its new position (the target often a subtile off), and on arrival one
+last time with its position on the target and an empty path. An accepted walk gets no reply. The host sends `0x96`
+every 100 frames (4 s) from the load when the position changed since the last one (the first always): `{u32 stamina,
+u16 x, u16 y, u8 dx, u8 dy}`, where dx/dy are the low byte of the position minus the low byte of the current move
+target (0 on arrival). A target more than 50 subtiles away is dropped, and resyncs when more than 25 frames have passed
+since the last valid target (medium, move handlers `0x4f3c70`, `0x4f6060`, `0x4fe1f0`); the other movement checks
+are in [map-generation.md](map-generation.md) section 7.
+
+**Picking up an item out of reach.** The client sends `0x16` when its **own** player arrives, which can be before the
+server's player does. D2R's `0x16` handler (`0x4b9df0`) ignores an item 5 to 50 away, and the client retries the
+pick-up about 2 s later (observed). A host that refuses the run to the item leaves the player standing, so the first
+`0x16` always fails.
+
+**Talking to a town NPC** (observed): `0x4d` (stop request), a walk to the unit every frame while closing in, `0x2f`;
+within 7 the host answers `0x27`, `0x29`, `0x28` type 1. `0x31` and `0x44` are the talk lines and the heard
+greeting, `0x30` closes. Around it the NPC sends `0x8a` (hail, every 0.8 s while it has something unheard), `0x2c`
+sound `0x13` (greeting), `0x67` walks, `0x6d` stands and `0x6b` S1/S2. A client that first sees an NPC mid-walk gets
+`0xac`, `0xa8`, then `0x67` with the rest of the walk. The AI side is in [engine-server.md](engine-server.md) section 5.
 
 **Respawn** (`0x3f`): life/mana/stamina `0x1e`, the town rooms and hand skills, removal of the old level's rooms and
 units, `0x15` warp, state `0x36` off (`0xa9`), `0x95`, then the town objects and NPCs.
@@ -440,6 +481,10 @@ Fixed layouts (static, consistent with the town captures). Unit-level background
 | `0xa7` / `0xa9` | 8 | u8 unit type @1, u16 state @2, u32 guid @4 (state on without values / off; builders `0x4801b0` / `0x4800a0`) |
 | `0x0a` | 6 | u8 unit type @1, u32 guid @2 |
 
+- **When they go out.** The player's own changed stats are flushed every frame by the client update `0x486970`
+  through the stat callback the join installs (`0x2f4a40(player, player, 0x4f3ad0)`); life, mana, stamina, gold and
+  experience go through the vitals pass `0x4f31a0` instead, which runs after the frame. So in one frame the `0x1d`-`0x1f`
+  come before `0x95`/`0x96` ([engine-server.md](engine-server.md) section 1; static only for the chain).
 - **Width of `0x1d`-`0x1f`** follows the value read as unsigned: below `0xff` a byte, below `0xffff` a word, else a
   dword, so a negative value always goes as `0x1f`. Values are in ValShift units (`maxhp` 40 is sent as `0x2800`).
 - **`0xa8`** (state on with values): u8 unit type @1, u8 size @2, u16 state @3, u32 guid @5, then a bit stream (LSB

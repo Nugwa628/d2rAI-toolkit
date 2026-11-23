@@ -159,6 +159,7 @@ that uses them.
 | lvlwarp.txt | `Id`, `SelectX/Y/DX/DY`, `ExitWalkX/Y`, `OffsetX/Y`, `LitVersion`, `Tiles`, `Direction`; D2R adds `NoInteract`, `UniqueId` | warp tile placement, click area and the walk-out point |
 | lvlsub.txt | `Type`, `File`, `CheckAll`, `BordType`, `GridSize`, `Dt1Mask`, `Prob0-4`, `Trials0-4`, `Max0-4` | outdoor substitutions; rows of one `Type` must be contiguous |
 | objpreset.txt, monpreset.txt | resolve `.ds1` preset unit numbers per act | server units |
+| lvlprest `Files` | not a bound on which files get read: the preset pick is `roll(Files)` (section 3.2), but some levels' own code loads `File` columns past it (Lut Gholein's `LutN.ds1`, the Act III jungle presets). Seen in a reimplementation of the generator that rebuilds the host's maps; the D2R call sites were not read | ship every `.ds1` any `File1-6` names. Vanilla 3.3's tables name 2078 `.ds1` and 233 `.dt1` files, and every one exists |
 | `.ds1` / `.dt1` under `data/global/tiles` | preset grids and units; tile records (style, sequence, orientation, **rarity**, flags, subtile collision) | the classic tile files are D2R's logic data even in HD; HD art is client-only |
 
 3.3 has 139 levels.txt rows, ids 0-137: level 137 is new (Act V, preset). Code and plugins must take the level
@@ -248,6 +249,15 @@ The full message picture is in [network-messages.md](network-messages.md).
   player's `0x7f` with the new level.
 - **Units of a room** when it comes into view: monsters (`0xac`, then `0xa8` alignment, then `0x6d`), objects
   (`0x51`, and `0x0e` with the mode when its init set one), then warp tiles; newest first within each group.
+- **Which preset units a room gets, in order** (matches the host's guids on three captures): first the tile build's
+  units (doors, warps, the units of the level's substitutions), then the `.ds1` units that stand inside the room, in
+  file order. A `.ds1` unit belongs to a room when `room.x <= x < room.x + width` (same for y), in subtiles: the
+  room's origin plus the preset offset. All objects of that list are made first, then the monsters, each in list
+  order. Object class 573 is invalid preset data and is skipped; classes above it are special presets. Critters
+  (monstats2 `critter`, the town chickens) are never made from presets.
+- Several rooms built by one move are populated **newest first**, so the client's own room gets the last guids of
+  the batch. An object whose init set its mode is followed by `0x0e` (message 3, the mode) only for a client that saw
+  it made; a client that gets the room later gets the `0x51` alone.
 - The server activates rooms around players and stops AI in rooms nobody has (classic behaviour, observed).
 - **Wire level ids are 16-bit** in `0x07`/`0x08`. Other client messages that carry a level as a byte are
   unverified (see the portal row in [engine-limits.md](engine-limits.md)).
@@ -257,8 +267,10 @@ The full message picture is in [network-messages.md](network-messages.md).
 - **Taking a warp tile.** The client walks up and sends C->S `0x40` with the tile's id. The server's warp handler
   (`0x4adbb0`, build 93847) only operates an enabled tile in nearby rooms **within 5 subtiles** of the player's
   server position; it does not schedule a walk. The reply: `0x07` for the destination room (even if known), `0x0d`
-  for the player, `0x7f` with the new level, `0x15` at the arrival point (flag 1), then the room change of
-  section 6.
+  for the player, `0x7f` with the new level (its place varies), `0x15` at the arrival point (flag 1), then the room
+  change of section 6. Entering the Den of Evil puts `0x5d` (quest 1, flags 0, status 2, param 0) between the `0x15`
+  and the room change, for a player whose record has not passed that step; the Den's level-change event moves its
+  quest log to status 2. The client then lights the Quest Log button.
 - **Arrival point.** A free-coordinates search in the destination room around its warp unit: size-2 footprint,
   mask `0x1c09`, square rings out to 50 subtiles (left and right columns first, then top and bottom rows),
   smallest Manhattan distance wins. The player then walks to arrival + lvlwarp `ExitWalkX`/`ExitWalkY`. Warp
@@ -269,7 +281,12 @@ The full message picture is in [network-messages.md](network-messages.md).
   was never set. The server sets it with `0xa8` (state 105 `alignment`, stat 172, value 2 for players) right after
   `0x59` and again after the placing `0x15`. A plugin or tool that builds or replays player units must send it, or
   the player can walk onto a cave mouth and never enter it. monstats `Align` 1 (NPCs) is sent as 2, `Align` 2 as 1,
-  monsters get an empty list.
+  monsters get an empty list. The client side (build 93847, read and probed): the selection scan `0xf1cc0` runs the
+  hit test `0x9b840` on the units of the adjacent rooms, which rejects a unit for its reject flag, then when the three
+  can-interact checks (`0x971e0`, `0x97040`, `0x96e80`) are all 0, then not targetable, no line of sight, a mode other
+  than 0, and for a warp tile the click area against its lvlwarp row (`0x9bde0`). Outside town `0x971e0` is "not
+  allies" (`0x2f32d0`: allies when both alignments are 0 or both 2, alignment from `0x2f4190`, stat 172 of state
+  105). Only a hovered warp tile turns a click into `0x40`. 1.14d has the same rule (`0x6259b0`, `0x465c60`).
 - **No facing on a warp.** `0x15` and `0x0d` carry no direction and the warp action (`0x491ff0` -> `0x491ca0`) sets
   none; the player faces the way it walks off. lvlwarp `Direction` is the client's click-area orientation, not a
   facing (medium).

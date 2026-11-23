@@ -24,7 +24,8 @@ anything "the game decides" hooks this half. This file is a map of it for mod an
 | All games tick | `0x406400(nowMs)`: every **40 ms (25 frames/s)**; returns 1 when it ticked, the loop calls it again to catch up | high |
 | One game frame | `0x406550(game)`: increments the frame counter `game+0x170` first, then environment per act, clients, units, quests | high |
 | Client join state machine | `0x408ea0(game)`, called every frame from the frame | high |
-| Empty-game sweep | `0x406e40`: destroys a game with no clients for **300 s**, or at once when `game+0x1a5d8` (closing) is set | high |
+| Between-frame pass | `0x406e40`: runs after every `0x406400` call. First, for every client, the output step `0x408ab0`, and for in-game clients (state 4) the vitals pass `0x4f31a0` (forced through the counter at `client+0x2bc`). Then the empty-game sweep: destroys a game with no clients for **300 s** (timer `game+0x57e8`), or at once when `game+0x1a5d8` (closing) is set | high |
+| Tick due time | global `0x2a9bff4`: `0x406400` ticks when now >= it and adds 40 ms. Anything that restarts the loop must set it to "now" first, or the first call catches up from zero | high |
 | Destroy game | `0x4057c0(gameId)` | high |
 | Client list teardown inside destroy | `0x486be0`: a good hook to reset per-game plugin state | high (hooked in a working plugin) |
 
@@ -41,8 +42,37 @@ Frame order inside `0x406550` (high for order, the role of some callees is low):
 5. Every 20 frames: quest timers (`0x516e40`, medium). Every 12 frames and every 11 frames: two other periodic
    jobs (roles not identified).
 
+Within one 40 ms pass the frame comes first and the between-frame pass second, so a frame's own-player stat
+messages (`0x1d`-`0x1f`, section below) reach the client before that pass's `0x95` / `0x96` vitals. The per-act
+environment call in step 2 runs every frame, but `0x53` reaches the wire only at the load, at an act change and
+every 2176 frames (observed: one `0x53` in 39 s of idle town); its gate is not located.
+
 Useful constants: max **8 players** per game (`game+0x105` holds the creator's limit); up to **1024 games**, ids
 1..0x400 rotating; the transport drops a connection silent for **15 s**; a 30 s per-game client check.
+
+### Client states and the per-frame client update
+
+`0x408ea0` (frame step 3) walks the clients and moves each through its state at `client+0x004` (high for the
+states, medium for state 5):
+
+| State | Meaning | What runs |
+|-|-|-|
+| 1 | joined, upload not finished | nothing until the last `0x6c` chunk (`client+0x4e0` bit 8) |
+| 1 -> 3 | load the player | `0x483b20` builds the player from the upload, sends `0x0b` and `0x5f`, installs the player's own stat callback (`0x2f4a40(player, player, 0x4f3ad0)`); then the act is loaded and the client added to it, and `0x486970` runs once |
+| 3 -> 4 | start the act | `0x486970` polls the act load; once ready it logs `[JOIN 6] SCMD_STARTACT`, sends `0x04`, places the player (`0x470c90`), exchanges units with the other clients, places the hireling |
+| 4 | in game | `0x486970` every frame |
+| 5 | re-entry (act change) | `0x486970`, then as state 4 |
+
+`0x486970` is the per-client update a plugin most often needs to know about. Each frame it:
+
+- applies a room change of the client's player (the room messages of [map-generation.md](map-generation.md)
+  section 6), and runs the town hooks `0x502d00` when the new room is on another level, after the move;
+- **flushes the player's own changed stats** through the callback above: `0x2f4a40` walks the changed stats and
+  `0x4f3ad0` sends each as `0x1d` / `0x1e` / `0x1f` by value size. A stat a plugin changes on the server reaches its
+  own client in the same frame, with no extra call (static only for the chain; the messages are observed).
+
+Life, mana, stamina, gold and experience do not go through this flush; the vitals pass `0x4f31a0` sends them
+([network-messages.md](network-messages.md), "Vitals").
 
 ### Message dispatch and the "dead or busy" gate
 
@@ -282,8 +312,66 @@ player's level and within 7. Every later request re-checks the NPC, the distance
 Several players can talk to one NPC; it keeps a speaker count, which is also what stops it walking. The NPC menu is
 built by the client (`0x1147a0`), the server answer by `0x4b0470` (C->S 0x38: kind 1 trade, 2 gamble, 3 hire).
 
-Town NPCs do not wander at random: their AI (`0x5c1e80`, monai NPC entry) follows the preset action list of the map
-with the NPC's own seed, and stops while someone talks to them.
+Town NPCs walk between the points of their map path (the preset's `{action, x, y}` list), picking the next point
+with their own unit seed, and stand while someone talks to them. Details below.
+
+### Town NPCs at run time (AI 32 `Npc`, think `0x5c1e80`)
+
+This is what Gheed, Akara, Kashya, Charsi and Warriv do in the Rogue Encampment. Checked against D2R host captures and
+a per-think log of the host's AI on build 93847 (high unless marked); the addresses are build 93847.
+
+**Creation and the first think.** The NPC takes two draws from its unit seed when it is made and thinks two frames
+later. The first think records the spawn point as home (AI command 7) and idles 20 frames. An NPC is made when its
+room is first populated, so Akara in a room first reached an hour into the game starts then.
+
+**Each later think**, first match wins:
+
+1. **Proximity.** The NPC looks for players on its level within 15 (`0x4a6900`). Distance is the AI distance with the
+   NPC's size (`0x596720`): each axis less monstats2 `SizeX` (2 for these NPCs), floored at 0, then the larger axis
+   plus half the smaller. A non-interact NPC takes the first player found. An interact NPC asks its quest cycler about
+   each player in scan order and takes the first one it is active for; that cycler also makes it hail the player
+   (`0x8a`, the "!" over the head). With a player taken:
+   - within 3, or beyond 23: the NPC stops and counts a timer down, one per think, from 60. When the count starts it
+     greets with `0x2c` (unit type 1, sound `0x13`) to every client that has it, then idles 20;
+   - more than 16 from home: AI command 4 back home, idle 10;
+   - otherwise it walks toward the player (`0x4a6ec0`) with a step of at most 3 (distance - 2 when under 5), stopping 2
+     short. The step is split over the axes in proportion to the distance on each. Warriv's approach to a standing
+     player goes 2, 1, 1 subtiles a side at distances 11, 7 and 5.
+2. **Commands.** Command 4 (walk to a point): walk there while more than 3 away, else idle its fourth field; each think
+   counts its third field down, and at 0 command 5 and the map path get their turn. Command 5: walk to the point,
+   then start S1 or S2 if the class has it.
+3. **Map path.** A percent draw: 66 or more idles 8 frames. Otherwise a second draw picks a point of the path. An NPC
+   with no path makes neither draw. By the point's action:
+   - 1 and 3 (`0x5c5300`): walk to a point with non-zero x and y that the NPC is not on, then command 4 for twelve
+     thinks ten frames apart; the think ends even when the walk is refused;
+   - 2 (`0x5c53d0`): the same walk, then twenty thinks whether or not it walked;
+   - 4 and 5 (`0x5c5470`, `0x5c5590`): the walk, then command 5 (S1 / S2 if the class has it, else NU, four tries)
+     and twelve thinks.
+
+**Walks and stops.**
+
+- A walk's end thinks in the same frame, still in walk mode; a think that walks again chains the walks with no stand
+  between. A think that does not walk stands the NPC with `0x6d`, after whatever that think sent first (Warriv's hail
+  comes before it).
+- A refused walk (no path, nowhere to stand at the target) sends `0x6d` where the NPC stands and thinks again after
+  the class's `aidel` (15); the next think tries the same walk. Some runs refuse nearly every walk of one NPC (Gheed:
+  417 of 418 in one capture, none in another); the cause is on the path and collision side, not located.
+- One command-4 walk in four goes out with path type 1 instead of 7: the host keeps **one counter for every NPC of the
+  process**, so this is not per game.
+- Charsi's S1 at the anvil (`0x6b` action 12) lasted 128 frames, then `0x6d`, then the next think 16 frames later.
+  Other classes' S1 / S2 lengths are not measured.
+- Walk frames and the `0x67` layout are in [movement-modes.md](movement-modes.md) section 9.
+- The host stops the AI in rooms no client has (observed); an NPC whose room nobody sees does not think.
+
+**Talking.**
+
+- A click on an NPC sends C->S `0x4d` (stop request), then a walk to the unit (`0x04`) every frame while the player
+  closes in, then `0x2f`. The `0x4d` stops the NPC until a think 25 frames later (`0x4a6d10`). `0x2f` within 7 opens
+  the dialog: `0x27`, `0x29`, then `0x28` type 1.
+- While a player talks to it (the town's speaker count) the NPC stands and schedules no think until the talk ends.
+  `0x30` (close), a `0x2f` to another NPC, or the player leaving lets it think on the next frame. What D2R's `0x2f`
+  handler itself does to the NPC's AI is not located.
+- PLAYER_IsBusy (`0x545ac0`) also keeps an NPC from taking a player; its conditions were not read.
 
 ### Vendor stock (`0x540850` -> `0x53c9f0`)
 
@@ -589,4 +677,12 @@ missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, 
   resurrection, and reads the `base` bank.
 - **Per-game state dies with the game.** Quest game state, GUID sets, vendor stock and the roster are rebuilt per game;
   only the character's own bits are saved. Plugin state keyed per game should reset in the destroy path (`0x486be0`).
-- **Do not block the loop.** All games share one thread at 25 frames/s.
+- **Do not block the loop.** All games share one thread at 25 frames/s. Nothing in D2R guards a slow handler or hook:
+  messages and frames run to their end, and a late loop catches up by running the missed frames back to back
+  (`0x406400` returns 1 until it is on time). Clients ride out a short stall: against a custom host, a 1.2 s stall (30
+  frames) with two players in town left both in the game, and the heartbeat `0x6d` that waited was answered after it
+  (observed). The transport drops a connection only after 15 s of silence. File reads are the usual cause of a stall:
+  the first activation of a room loads its tile libraries (`0x3f3970`, [map-generation.md](map-generation.md)
+  section 5.1), so a plugin that reads its own files should do it at startup, not inside a frame.
+- **A save stored at 0 life loads with full life and mana** (observed on the host: a character saved dead joins with
+  full orbs). A tool that edits or replays saves should not expect the stored vitals back.
