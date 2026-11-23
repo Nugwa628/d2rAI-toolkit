@@ -24,6 +24,12 @@ code; **static only** = read in the code, never captured; **unverified** = infer
   outside the table.
 - **C->S sizes** are checked by the server handler itself (`len != N` at its top) or by a shared size function.
 - A loader may exchange messages of its own outside D2R's id ranges. Leave ids D2R does not use alone.
+  D2RLoader 1.3.1 uses **`0xd0`** in both directions for its plugin channel (`NetworkService`): `0xd0`, a u16
+  length, an 18-byte `"D2RL"` header, then at most 224 payload bytes. Layout, kinds, sequences and rate limits:
+  [d2rloader.md](d2rloader.md#the-plugin-channel-in-the-game-stream-0xd0) (static).
+- Under D2RLoader 1.3.1 the stat parts of the item stat update (`0x3e`), the state messages (`0xa8`, `0xaa`) and the
+  new-monster message (`0xac`) are built and read by D2RCore's wide stat exports, not by the game's own code
+  ([d2rloader.md](d2rloader.md#d2rcores-exports); static, from export names).
 
 Variable S->C length rules (observed unless marked):
 
