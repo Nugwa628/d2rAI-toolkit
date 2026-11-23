@@ -107,7 +107,7 @@ Not every id; the ones a plugin change commonly touches or that show up first wh
 | `0x2b` | 206 | correct path (only when client and server paths differ) |
 | `0x2c` | 8 | play sound |
 | `0x2d` | 5 | echo of the client loop counter `0x6f`; also sent before other messages when the counter moved |
-| `0x2e` | 6 | D2R trade event `{u8 event @1, u32 value @2}`: 2 cancelled by the sender, 3 step done (both sides), 4 cancelled by the other side (value = trade id), 5 setting changed (value 0/1). The client's size table marks it variable; every send site writes 6 |
+| `0x2e` | 6 or 36 | D2R trade event `{u8 event @1, u32 value @2}`: 1 update (**36 bytes**, builder `0x52ae60`), 2 cancelled, 3 done (both sides), 4 aborted by the server, 5 refuse setting echo (value 0/1); value = trade id for 2-4. The client's size table marks it variable. Layout and flow: [trade-party.md](trade-party.md#12-messages) |
 | `0x3e` | var | one item stat changed (repair, recharge, throw stack quantity); layout under "Stat and state messages" |
 | `0x42` | 6 | destroy hand (cursor) item |
 | `0x47` / `0x48` | 11 / 11 | item modifiers / requirements-met refresh; follow every request that ran the inventory refresh |
@@ -185,14 +185,18 @@ payload only); the pops (`0x641230` system, `0x641160` game) hand the handler `{
 merc's item off), `0x9d` action 6 (the given item on, owner type 1), `0x9c` action `0x11` (the merc's old item onto
 the cursor). Body locations 11/12 (the swap slots) cannot be addressed by it.
 
-**Trade (`0x2b` / `0x2c`, new in D2R; observed).** A click on another player walks or runs to him (`0x02` / `0x04`
-to unit type 0), then sends `0x2b` with payload `{u32 trade id, u32 0, u32 partner guid, u8 item count, count x 16-byte
-items}` (13 bytes with no items; decoder `0x52ce60`) and shows "Asking other player to trade". Its Cancel sends `0x2c`
-with payload `{u32 trade id, u32 0, u16 4}`, repeated with the next move. Answering `0x2b` with `2e 04 <trade id>` and
-`0x2c` with `2e 02 <trade id>` closes the prompt cleanly (observed against a custom game server; a real host's answers
-are not captured). A server or proxy that has no size for `0x2b` must not guess: a fixed-size splitter desyncs. In
-1.14d the id had no handler (dispatcher `0x54d750` returns 3 and the client is dropped); its click on a player was the
-interact `0x548b00`, which asked to trade with `0x77` 0 and 1.
+**Trade (`0x2b` / `0x2c`, new in D2R).** A click on another player walks or runs to him (`0x02` / `0x04` to unit
+type 0), then sends a 16-byte `0x2b` and shows "Asking other player to trade"; its Cancel sends a 13-byte `0x2c`,
+repeated with the next move (checked live on 93847). Both payloads are **LSB-first bitstreams**, not byte fields
+(decoders `0x52ce60` / `0x52d080`, static only): `0x2b` = trade id 32, gold 32, partner guid 32, a 6-bit item count,
+47 bits per item; `0x2c` = trade id 32, revision 32, accept, refuse and cancel bits, two 6-bit list counts, then the
+lists. An earlier reading here had `0x2b` as `{u32, u32, u32, u8 count, 16-byte items}` and the Cancel as `{u32 trade
+id, u32 0, u16 4}`; with no items those are the same bytes (the `u16 4` is the cancel bit), but item entries are 47
+bits, not 16 bytes. Answering `0x2b` with `2e 04 <trade id>` and `0x2c` with `2e 02 <trade id>` closes the prompt
+cleanly (checked live against a custom game server). A server or proxy that has no size for `0x2b` must not guess: a
+fixed-size splitter desyncs. In 1.14d the id had no handler (dispatcher `0x54d750` returns 3 and the client is
+dropped); its click on a player was the interact `0x548b00`, which asked to trade with `0x77` 0 and 1. The full
+trade (events, state, checks, exchange) is in [trade-party.md](trade-party.md#1-trade).
 
 ## Where the server handles them (hook points, build 93847)
 
@@ -527,7 +531,9 @@ loader core.
 | `0x26` | S->C | var | type, language, unit type, u32 guid, color, sub type, speaker (<= 60), text (<= 255) | `0x477a30`; overhead `0x538980` |
 | `0x15` | C->S | 14-284 | type, language, text, target name, then 9 tail bytes (kind, u32 x, u32 y) | loader core |
 
-`0x5a` types: 2 player joined, 3 player left, 4 whisper target not in the game, 7 party screen event (param1 = the
+`0x5a` types: 2 player joined, 3 player left, 4 whisper target not in the game, 6 a player was slain (to everyone;
+killer class @3, killer unit type @7, victim @8, killer guid or monster kind @16, superunique row @32; see
+[trade-party.md](trade-party.md#31-the-slain-line-0x5a-type-6)), 7 party screen event (param1 = the
 other player, param2 = code), `0xd` whisper refused, `0x10` "please wait" after an early hostile declaration (param3
 = the declarer). Type 7 codes: 1/2 loot allowed (the female wording for classes 0, 1, 6), 3 hostile, 4 no longer
 hostile, 5 invited, 6 invite cancelled, 7 joined party, 8 now allied, 9 left party, 10/11 loot withdrawn.
@@ -564,7 +570,8 @@ stash-tab units refused. The relation records and party rules behind these are i
 - **Corpse loot `0x13`**: @1 is the corpse (a player-type unit in state 7), @5 the player whose items it holds (must
   equal `0x388ba0` of the corpse's inventory). Cursor empty; more than 50 away is telemetry, more than 8 away or
   blocked by collision mask `0x804` is dropped silently. Another player's corpse needs a hardcore game and the owner's
-  loot flag.
+  loot flag; the emptied corpse's `0x8e {0}` then names the looter, not the owner
+  ([trade-party.md](trade-party.md#33-a-hardcore-corpse-looted-by-another-player)).
 
 ## Town portals
 
