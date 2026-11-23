@@ -509,7 +509,8 @@ missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, 
   sends the unit's own coordinates in 0x59 (SERVER_SendInitUnitPacket 0x571f90 -> 0x53e8f0); a corpse with assign 0
   sent at 0, 0 is neither drawn nor clickable.
 - **Pickup on the wire**: 0x9d 6 per placed body item, each with item flag **0x01** (1.14d `ITEMFLAG_RELOAD`, set
-  on every item taken from a corpse) and the slot in x, mode 1 (captured), then 0x8e {0}, the corpse's 0x0a, the
+  on every item taken from a corpse) and the slot in x, mode 1 (captured), then 0x8e {0, requester, corpse} (the
+  owner, or the looter at a hardcore loot), the corpse's 0x0a, the
   refresh, then sound 0x2c 100 to the picker. The corpse step's own gold pile goes through `0x424d90` (D2R's
   GOLD_DropGoldFromInventory, which in 1.14d makes the player the owner); whether D2R owns the pile for every caller
   (also C->S 0x47's drop) is not read.
@@ -540,6 +541,8 @@ missile is fired there. Step tables: origin `0x1d3e688`, per-frame `0x1d3e63c`, 
 - **Party**: the party iterator is `0x506ed0` (`0x506f90` is the one kill experience uses); kill experience with a
   level-gap penalty is `0x44fef0`. D2R splits party experience in doubles with a 64-bit pool capped at `0x7fffffff`.
   Hostility and loot flags travel in the party/relation messages ([network-messages.md](network-messages.md)).
+- **Between players** (trade, hostility of mercs and summons, the slain line and the ear, a partied death, a hardcore
+  loot, gold pile owners, worked party numbers): [trade-party.md](trade-party.md).
 - **Party on the wire** (3.3 captures plus 1.14d):
   - **Leave order**: 0x5a type 3 goes **first**, to everyone including the leaver, then 0x5c to the others, the party
     leave, the pet removals, and last the 0x0a's as the frame's room deletes. The 3.3 leave capture gave the leaver its

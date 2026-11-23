@@ -132,6 +132,9 @@ starts, and at a monster's death start (MONSTERMODE_OnDeath 0x5a6520), where "bo
   every member above level 8 but stamps only the named record, so the 60 s delay can be dodged by naming another
   member. Declaring on a fellow member also makes the declarer leave the party. The declarer's town portal is removed
   (`0x424c20`).
+- **What hostility reaches**: mercs, summons and missiles are resolved to their owners first, and the friendly test
+  (auras, warcries, Enchant) puts two players on one side only in the same party; see
+  [trade-party.md](trade-party.md#2-hostility-between-players).
 - **Invite / cancel / accept** need states 0 / 4 / 2. Accept creates a party (the inviter first) when the inviter has
   none, then refreshes every player's relation with both (`0x5e3d20`).
 - **Gold share** (`0x5074b0`): n = living members in the picker's area. When n > 1 each other member in the area,
