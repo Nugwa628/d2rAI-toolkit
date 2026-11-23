@@ -385,3 +385,77 @@ becomes 0); not both none. **static only**.
   monstats `rightArmItemType` +0x80 and `leftArmItemType` +0x82 both read as weapon type 0x2d through `0x373c40`; 0
   reads as weapon, an empty column loads as -1 and fails), and it is not the main weapon (`0x387690`). In vanilla
   only `act5hire1` (swor / swor) passes. The merc's main-weapon guid is at its inventory +0x38.
+
+## 10. Monster skill functions met in Act V, and the corpse rules
+
+Read in 93847 where an RVA is given without a tag, else in the 1.14d routine (tagged **1.14d**); **static only**
+throughout. These were re-implemented and tested in our server reimplementation notes, not measured in the real game.
+
+### 10.1 Baal's skills
+
+| Skill | Function | What it does |
+|-|-|-|
+| 285 (the throne's taunt) | srvdo 141, `0x585610` (1.14d `0x5d2e80`) | a unit find around Baal (flags 0x3002: monsters in mode DD only, town rooms skipped; the find walk `0x3b2570`, the same room walk as Nihlathak's corpse search) within Param5 + Param6 x (level - 1), or Param1 + Param2 x (level - 1) when that is 0 (40 for row 285). It finds them all first, then runs srvdo 55 on each as skill 285: each corpse is used up (corpse_nodraw). Row 285's calc1-3 are 0, so it deals no damage and does not depend on the corpse's life |
+| 315 Festering Appendages | srvdo 140 (1.14d `0x5d2c20`) | the tentacles: count, class walk and spot draws in [monster-ai.md](monster-ai.md) section 11. Each is made through the spawn-at-spot path with no ring search and gets its first think 15 frames on (RestartAiThink, 1.14d `0x5de0f0`: the pet's think timers are deleted and one set at that frame; it draws nothing). Revive (srvdo 58, +15) and the Assassin's shadows (+20) use the same call |
+| 318 Baal Cold Missiles | srvdo 139, `0x585440` (1.14d `0x5d2940`) | needs srvmissilea above 0; takes the target unit's spot, else the skill's point (none when a coordinate is 0); fires srvmissilea (baal cold maker, 589) as a srvmissile is fired (`0x4333f0`) and stores on the missile, as its TargetX / TargetY, the caster-to-point offset turned a quarter: (-(ty - y), tx - x). No draws |
+| missile do 31 (the maker) | `0x45b360` (1.14d `0x5b01f0`) | shared with the Wake of Destruction maker (missile 517). Without SubMissile1 it ends the missile; without an owner it runs the hit handler with no target. Otherwise, on a frame after its path entered a new subtile (path flag 8), it makes SubMissile1 (baal cold trail, 590) twice at itself with flag TargetOffset and its owner, skill and level: one aimed at its spot plus (TargetX, TargetY), one at its spot minus it; then the collision handler, whose answer it returns |
+
+### 10.2 Corpse Explosion's corpse life
+
+srvdo 55 (`0x559dc0`, body `0x55da50`; 1.14d `0x5c4df0`, the same rule) does not read the corpse's own max life for
+a monster. It takes the class's life at the corpse's level from the level-scaled stats helper (`0x3a26c0`; 1.14d
+`0x6538a0`), asked for life only:
+
+- monstats minHP and maxHP for the difficulty, as percent of monlvl's L-HP column for the difficulty (the L- columns in
+  an expansion game; a noRatio row takes minHP / maxHP as they are), at the corpse's level stat capped at monlvl's
+  last row;
+- then (min + max) x 128: the mean, in 8.8 fixed point.
+
+The difficulty is the game's (a champion carries its own copy of the game's settings with the same difficulty). No
+spawn roll, player count or champion / unique / minion life bonus counts; their level bonus does, through the level
+stat. A summon is a monster, so it too explodes with its class's life at its level. So the damage differs from what a
+plugin would get from the corpse's max life stat whenever the monster's life was rolled or raised. A player corpse never
+gets here (the selection takes monsters only). Revive (srvdo 58) uses the same level life.
+
+### 10.3 Monster skill functions
+
+| Function | Skill(s) | Rule |
+|-|-|-|
+| srvst 49 / srvdo 91 (1.14d `0x5cbd10` / `0x5cbe00`) | Nest: the vile mothers, the crow nests, Blood Raven, the evil huts, the sarcophagi | the start takes a monster caster's monstats `spawn` class at its spot plus spawnx / spawny, in spawnmode (outside 0-15: NU); any other caster the skill's summon and summode. It marks a small unit's cross at the spot with the monster bit, makes the caster uninterruptable and drops its EndAnim event. The do clears both, frees the spot and makes the monster within one ring, with no experience, no treasure and the skill's sumoverlay |
+| srvdo 108 (1.14d `0x5cdc10`) | RegurgitatorEat | a monster target in DD that is no hireling class leaves the game; with a positive full max life the caster gains calc1 % of it, never above its own max life and never below 1 |
+| srvst 53 / srvdo 95 (1.14d `0x5cc240` / `0x5cc4e0`) | Fetish Inferno, Baal's Inferno, MegademonInferno | a channel: the end frame (calc2 at least 1) and the inferno state; each flame fires srvmissilea for calc1 frames (or the missile's Param2 - 1 + level, 1-255) and moves the animation to monstats2 InfernoAnim (1.14d `0x5cc440`). While the frame is before param1 and the state holds, a mode change comes calc3 frames on (at least 1) and runs the do again; else the mode change events go and the animation ends InfernoLen frames on (11 without a monstats2 row; 1.14d `0x5cc3b0`) |
+| srvdo 96 (1.14d `0x5cc840`) | monster heal | the target regains calc1..calc2 % of its full life, drawn on the caster's seed, kept within 1 and the full |
+| srvdo 97 (1.14d `0x5ccb10`) | Resurrect (fallen shamans), Resurrect2 (fetish shamans) | a dead target in no hide-kind state, in a room, on a spot no wall blocks gets its full life and gets up. Without a room nothing happens and the corpse lies as it was. The raise (1.14d `0x5cc960`): targetable again with no experience and no treasure, Dead cleared, think events dropped (no new think until it reaches Neutral after the get-up), the region's kill count lowered (`0x547e90`, so a quest counting a level's dead stays right), its footprint back in place, and it starts monstats2 ResurrectMode (SQ for the fetishes, S1 for the fallen) with ResurrectSkill. No corpseSel test |
+| skill 293 Self-resurrect (srvst 61, 1.14d `0x5d1bf0`, no srvdo) | the reanimated hordes | its own life full when it has a room, then the raise above without the mode change; the targetable flags stay off until its next think |
+| srvdo 67 (Charge; 1.14d `0x5cf900`) | Charge 107 (Duriel, Uber Duriel, the flying scimitar, the reanimated hordes, the siege beasts, clawviper6-10), SerpentCharge 352 (clawviper1-5) | the run loops back to frame 0 once the game frames since the animation started (unit +0x44, set by 1.14d `0x553dc0`) reach the attack frame index (1.14d `0x5cf8c0`): 7 when the unit's sequence's first row has an event, else -1. seq_pinheadsmite has none, so the flying scimitar loops every frame. SerpentCharge's calc2 is 0 (Charge adds Param1 150), so the vipers run at half the run speed and need that loop to finish. The do moves the mode-change event on itself with flag 1 |
+
+### 10.4 Skill placement checks and corpse predicates
+
+**Placement** (1.14d `0x5fd470`, what an AI asks before casting at a spot):
+
+| Skill kind | Needs |
+|-|-|
+| a skills.txt TgtPlaceCheck skill (Resurrect, Resurrect2) | the target flagged targetable (0x2) and nothing of mask 0x3c01 under its collision pattern: an object, a wall or a unit standing on the corpse stops the raise |
+| a leap (srvdo 77 / 78) | the spot past the target free |
+| MonTeleport | a room out of town, nothing of mask 0x3c01 under the caster's pattern (a plus for size 1 or 2, a 3 x 3 box for size 3; 1.14d `0x649180`, `0x64d910`), a clear line of mask 0xc01 |
+| srvdo 67 (Charge) and DesertTurret | a room out of town and a clear line of mask 0xc01 to the target |
+| Nest | never refused |
+| DiabPrison | the check itself spawns the prison |
+| anything else | yes |
+
+**Corpse predicates.** Every corpse skill starts from the selection rule (`0x33fbe0`, section 8: dead mode, no state of
+the udead mask, monstats2 corpseSel). In the vanilla data the udead-mask states are freeze, dopplezon, revive,
+redeemed, corpse_nodraw, shatter, corpse_noselect, shadowwarrior, attached, recycled, restinpeace, corpseexp,
+uberminion, bind_demon and bind_demon_underling. On top of it:
+
+| Skill | Extra tests |
+|-|-|
+| Raise Skeleton, Raise Skeletal Mage (st15 / do31), Revive (st21 / do58) | monstats Velocity set (1.14d `0x645510`); Revive also the monstats2 revive flag and its debuff test |
+| Find Potion (st33 / do69), Grim Ward (do75) | a monster and monstats2 soft (1.14d `0x621f60`); Find Potion also corpse_noselect |
+| Find Item (st34 / do72), Redemption | a monster |
+| Corpse Explosion (st17 / do55), Poison Explosion (do63) | none; the explosion marks the corpse used (corpse_nodraw) |
+| Nihlathak's corpse search (`0x437b50`) | monsters in mode DD only, the explosion rule (`0x33a4f0`), first match of the room walk |
+| Shaman and horde resurrects (srvdo 97, skill 293) | no corpseSel test at all |
+
+No hireling row sets corpseSel, so no skill takes a merc's body. crownest1/2 have no Velocity, so they can be
+exploded but not raised.

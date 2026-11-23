@@ -559,3 +559,47 @@ modes 7/8, A1 otherwise. Elemental attacks with a `noRatio` row get no DM scalin
 
 Check D2RLoader's own hooks before patching any of these ([engine-re.md](engine-re.md)): some (for example the skill
 charge at `0x436830`) already have a D2RLoader hook at their entry.
+
+## 12. Hostility and the friendly side
+
+Two separate tests decide who may hurt whom and who counts as an ally. "Not hostile" is **not** "on my side". Read
+in 93847 next to 1.14d; **static only** (reproduced in our server reimplementation notes, not checked in the game).
+
+**Hostile** (SUNIT_AreUnitsHostile: `0x48e060` at the damage sites, `0x48e460` -> `0x492790` for the AI, skill and
+aura checks; 1.14d `0x554200`). Both units are resolved to their owners first:
+
+- the attacker: a monster becomes its owner once (`0x4a53c0`, the minion owner of the AI control); a missile that
+  stores its owner (missile flag 0x400 at +0x128) becomes that owner unit, which is not resolved again;
+- the defender: a monster's owner chain is walked (`0x4a53c0` repeated, stopping at a unit that owns itself);
+- two resolved players are hostile only by the party's hostile flag (`0x508020(a, b, 8)`), and `0x48e060` adds a town
+  test on the resolved players (`0x34b440` / `0x2f0750`);
+- any other pair goes by alignment (`0x2f32d0`).
+
+So between two players who declared hostility, out of town, each one's merc, summons and pets are hostile to the other
+player and his minions, both ways; a merc outside town whose owner stands in town is not hostile. A pair that resolves
+to one player is refused.
+
+**Same side** (93847 `0x48e4d0`, 1.14d SKILL_CanUnitTargetAlly `0x554de0`):
+
+- each monster is first replaced by its owner, once;
+- a unit is on its own side;
+- two players share a side only when both are in the same party (a party id other than none);
+- any other pair is on one side when both are evil or both are good (1.14d `0x650d70`); a neutral monster is on no
+  side.
+
+Who asks it:
+
+- auras with the FINDALLY target filter (1.14d `0x56b3e0`): an ally aura such as Might or Prayer reaches the owner's
+  party, pets and good monsters, never a player outside the party, even one standing next to him;
+- the warcry missile hit (missile hit 18; 1.14d `0x5ab0b0`): Shout, Battle Orders and Battle Command reach only the
+  owner's side, so a player in another party, or in none, gets nothing;
+- Enchant (93847 srvdo 25 `0x553650`, 1.14d `0x5ca0b0`): the target only when on the caster's side, else the caster.
+
+An aura filter with IGNALLY and no FINDALLY keeps the hostile units only; with neither flag both sides pass.
+
+**Friendly heal** (Holy Bolt; 1.14d `0x5a9fb0`, 93847 `0x48e3a0` / `0x48e250`) is a third test: the caster's pet when
+the skill has TargetPet (1.14d `0x5542c0`), or with TargetAlly a player or a player's monster in the caster's party
+(1.14d `0x554d20`).
+
+A plugin that adds a summon or a pet must keep the owner link the AI control holds (control +0x68 / +0x6c), or the
+unit falls back to plain alignment: it becomes hostile to its owner's party in PvP and stops getting the party's auras.

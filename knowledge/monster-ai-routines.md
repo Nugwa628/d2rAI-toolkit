@@ -715,8 +715,16 @@ and puts it back whenever no aura is active.
 
 ### Sarcophagus (monai row 45)
 
-Confidence: **compendium only**. Works like the FoulCrowNest with three differences: its range is 25, its use timer
-only restarts after a successful spawn, and it dies once its uses exceed aip3, so it spawns aip3 + 1 times.
+Confidence: **confirmed**, classic notes (1.14d init `0x5f6630`, think `0x5f6a10`). Works like the FoulCrowNest with
+three differences: its range is 25, its use timer only restarts after a successful spawn, and it dies once its uses
+exceed aip3, so it spawns aip3 + 1 times.
+
+- A target past 25: idle 25. More than aip3 spawns (strict test): no treasure, then death mode.
+- aip1 frames since the last spawn (either way round) and an SK1: the spot test is a small unit's cross two subtiles
+  south of the sarcophagus, in a room and clear of mask 0x3c01. Free: one more spawn, the timer restarts, SK1 (its
+  Nest) at the target. Busy: the timer is kept.
+- Otherwise one raw draw: idle 20 + draw % 10.
+- No levels.txt list names it (monstats 228): the Act II tombs' presets place it.
 
 | aip | Meaning |
 |-|-|
@@ -737,11 +745,17 @@ on the next tick, the kill credited to its target. It never uses A1.
 
 ### FlyingScimitar (monai row 47)
 
-Confidence: **compendium only**.
+Confidence: **confirmed**, classic notes (1.14d think `0x5f6ca0`).
 
 - In melee range: A1 on aip2, else circle walk 2 on aip4, else idle aip3.
 - Outside: on aip1 a straight step of up to 8 at the target. Otherwise a second aip1 roll makes it approach
   normally; idle aip3 when that fails too.
+- Monstats 234 is what a chest trap of type 8 or 9 releases in a level whose monsters give no other trap class (Act
+  II on); no levels.txt list names it.
+- Its Charge (skill 107) uses seq_pinheadsmite, whose first row has no event. The attack frame index (1.14d
+  `0x5cf8c0`) reads only the sequence's first row: 7 when it has an event, else -1. So the scimitar's charge run loops
+  on every frame once Charge's do first runs, where Duriel, the hordes, the siege beasts and the vipers (whose
+  sequences start with an event) loop every 7 frames. See [skills-missiles.md](skills-missiles.md) section 10.
 
 | aip | Meaning |
 |-|-|
@@ -781,6 +795,10 @@ Confidence: **confirmed**, classic notes.
 - With a clear line to the target it casts on aip4: SK4 (aip2, cooldown aip5 frames) or SK2 (aip3, cooldown 20
   frames). Without a clear line only SK4 is tried, needing aip1 and aip2.
 - Otherwise 30% circle walk 4, else idle 20.
+- The teleport is SK3 = MonTeleport. Its spot test (1.14d `0x5fd470`): a room out of town, nothing of mask 0x3c01
+  under the caster's collision pattern (a plus for size 1 or 2, a 3 x 3 box for size 3) and a clear line of mask
+  0xc01. A refused spot spends the cooldown and the routine goes on. "Just hit" here is the AI state 3 or 19 (1.14d
+  `0x5dd2b0`). The heal takes the **last** matching priest or zealot in scan order (1.14d callback `0x5f7240`).
 
 | aip | Meaning |
 |-|-|
@@ -793,7 +811,8 @@ Confidence: **confirmed**, classic notes.
 
 ### Mephisto (monai row 50, think `0x5b1ca0`)
 
-Confidence: **differs** (on aip2 and aip3). His desperation is d = (100 - life %) / 5, 0 to 20.
+Confidence: **confirmed** for aip1; aip2 and aip3 **settled** in favour of our notes (they were **differs**). His
+desperation is d = (100 - life %) / 5, 0 to 20.
 
 - In melee range: a skill burst starts on aip1 (our notes read the test as roll at or below aip1). Otherwise a roll
   of d + 80 or more gives a running circle walk 3 at speed bonus 50%, a roll of 80 - d or more casts SK3 at the
@@ -807,18 +826,22 @@ Confidence: **differs** (on aip2 and aip3). His desperation is d = (100 - life %
   or it is farther than 30, and SK5 when the target is within 15 and the roll falls in the first slice. Then SK4 for
   the next slice, SK2 for the third and SK1 for the rest. Without skills he wanders 6.
 
-The two sources differ on the parameters:
+The two sources differed on the parameters. The compendium says only aip1 is read. Our notes (read in build 93847)
+say his own target search (`0x5b2370`) also reads aip2 and aip3. Among the hostile, living units within 32 (squared
+distance 1024) it keeps the one with the fewest hit points and the closest player; on aip2 the burst aims at the
+weakest unit, else on aip3 at the closest player, else at the tick's target.
 
-- Compendium: only aip1 is read.
-- Our notes (read in build 93847): his own target search also reads aip2 and aip3. Among the hostile, living units
-  within 32 (squared distance 1024) it keeps the one with the fewest hit points and the closest player; on aip2 the
-  burst aims at the weakest unit, else on aip3 at the closest player, else at the tick's target.
+**Settled** (from the 1.14d routine and the 93847 one): both builds read aip2 and aip3. The 1.14d alternate-target
+pick (`0x5f77c0`, 1.14d) rolls under aip2 for the weakest unit of its scan (`0x5f7700`, 1.14d), then under aip3 for the
+closest player. In 1.14d the aip3 roll never comes, because the scan tests Mephisto's own type for "player"; D2R tests
+the scanned unit, so the aip3 branch is live. The compendium's "only aip1" is wrong for both builds. Not checked in the
+game.
 
 | aip | Meaning |
 |-|-|
 | 1 | chance to start a skill burst (in melee range) |
-| 2 | our notes: chance that a burst aims at the weakest enemy in reach; compendium: not read |
-| 3 | our notes: chance that it aims at the closest player instead; compendium: not read |
+| 2 | chance that a burst aims at the weakest enemy in reach |
+| 3 | chance that it aims at the closest player instead (live in D2R only) |
 
 ### Diablo (monai row 51, think `0x5c8d40`, alt `0x5a8f00`)
 
@@ -872,7 +895,8 @@ Confidence: **confirmed**, classic notes. It is submerged, emerging or up.
 
 ### Summoner (monai row 53, think `0x5b4d50`)
 
-Confidence: **differs** (on aip6). On his first tick he runs a one-time quest update. Then:
+Confidence: **confirmed**; aip6 **settled** in favour of the compendium (it was **differs**). On his first tick he
+runs a one-time quest update. Then:
 
 - aip1 is the chance to use a skill at all; when it fails he wanders 4.
 - SK5 comes first on aip2.
@@ -889,7 +913,11 @@ flee 6, and the skill or wander order follows in the same tick.
 - Compendium: that later order always replaces the flee, so aip6 has no effect in practice.
 - Our notes: aip6 is listed as a working chance to back off; they do not record that the later order cancels it.
 
-Until someone watches it live, treat aip6 as unreliable.
+**Settled** (from the 1.14d routine, 1.14d `0x5f85c0`): the flee starts (a walk with offset 6, whose move start runs
+the mode transition at once) and the think falls through. Every path after it ends in a cast or the wander 4, and
+each runs the mode transition again, replacing the walk's mode, path target and step count. What is left of aip6 is
+its draw, the walk start's side effects and the velocity overrides it set. So aip6 moves the seed but he never backs
+off. The 93847 think was not re-read for this; not checked in the game.
 
 | aip | Meaning |
 |-|-|
@@ -898,7 +926,7 @@ Until someone watches it live, treat aip6 as unreliable.
 | 3 | chance to keep the side that matches the target's resistances |
 | 4 | SK2 interval (frames) |
 | 5 | SK4 interval (frames) |
-| 6 | chance to flee 6 (target closer than 5); see above |
+| 6 | a roll for a flee 6 (target closer than 5) that the same tick cancels; it only spends a draw |
 | 7 | SK2 range |
 | 8 | SK1 and SK3 range |
 
@@ -1083,6 +1111,13 @@ Confidence: **confirmed**, classic notes.
   of its own pack count. With aip2 below 3 champions and uniques are left out. A player-allied shaman treats aip2
   as at least 1.
 - It never heals living units.
+- From the 1.14d routine (`0x5f9a80`, alt `0x5f9950`, corpse callback `0x5f99a0`): a corpse must still carry the
+  targetable flag 0x2 and no state of the undead kind, and the nearest wins. SK3 (Resurrect2) needs its placement
+  check to pass: nothing of mask 0x3c01 under the corpse's collision pattern, so an object, a wall or a living unit on
+  the corpse stops the raise. The pack gets an Attack order (with the breath) or a follow order to the corpse (with
+  the raise). The alt ends a breath still on, makes the asked state change and idles 1. Our notes read the last
+  step as a walk at the target on aip4 (else idle 10), not a circle walk; the difference was not settled.
+- The raise itself is in [skills-missiles.md](skills-missiles.md) section 10 (srvdo 97).
 
 | aip | Meaning |
 |-|-|
@@ -1128,6 +1163,11 @@ Confidence: **confirmed**, classic notes.
 - In melee range: A1 on aip4, else idle aip7.
 - Outside: once all spawns are used she always approaches. Before that she approaches on aip5, else circle walks 4
   on aip6, else idle 15.
+- More from the 1.14d routine (`0x5fa010`): her child class is vilechild1 walked down monstats NextInClass as many
+  steps as she sits down her own class chain, so each mother counts and lays the children of her own tier. The spawn
+  spot is 3 subtiles out in the eighth toward the target, then the other eighths in turn; the first where vilemother1
+  could stand (a room, nothing of mask 0x3c01 under a small unit's cross) gets SK1 (Nest). The spawn branch runs only
+  while she is evil.
 
 | aip | Meaning |
 |-|-|
@@ -1142,7 +1182,9 @@ Confidence: **confirmed**, classic notes.
 ### VileDog (monai row 69)
 
 Confidence: **confirmed**, classic notes. It idles 5 on its first tick. In melee range A1 on aip1, else idle aip2.
-Outside melee range it approaches on aip3, else idle 10.
+Outside melee range it approaches on aip3, else idle 10. A walk the mode system refuses forces a collision check and
+draws again: 70% a short random walk, else idle 10. Users: the vile children (vilechild1-5) and the pain worms
+(painworm1-5); none stands in a level's monster list.
 
 | aip | Meaning |
 |-|-|
@@ -1186,6 +1228,13 @@ Confidence: **confirmed**, classic notes.
 - Eating: it walks to the corpse and eats it with SK1. If it stops more than 2 subtiles short, its retry walk is
   cancelled by the idle issued right after it, so it eats from where it stands. After eating it flees 8 while the
   target is in melee range, then shoots A2 once and flees 16.
+- More from the 1.14d routine (`0x5fa710`, corpse search `0x5fa690`): a corpse qualifies when it is a monster other
+  than itself, not a hireling (unit flag 0x200), still flagged targetable (0x2), dead, with no state of the udead
+  kind, evil and monstats2 soft. The walk to it gives up after six tries. The eat (SK1, RegurgitatorEat, srvdo 108)
+  removes the corpse and heals calc1% of the corpse's full max life, capped at its own max life.
+- Flag 0x2 is set when the monster is made (1.14d `0x574266`) and kept through an ordinary death; a state of the hide
+  kind that outlives the death (Freeze, for example) clears it (1.14d `0x5a65bb`), so such a corpse is never eaten or
+  raised.
 
 | aip | Meaning |
 |-|-|
@@ -1462,7 +1511,7 @@ straight at the target. A burst is aip2 + 1 shots, aip1 frames apart, followed b
 
 ### PantherJavelin (monai row 95)
 
-Confidence: **differs** (on aip3).
+Confidence: **confirmed**, classic notes; aip3 **settled** in favour of our notes (it was **differs**).
 
 - Target closer than 8: flees 16 on aip4.
 - Target farther than aip6 - 6: moves near it (4) on aip1.
@@ -1477,11 +1526,19 @@ The two sources differ on the unit of aip3:
 - Our notes (classic routine): aip3 is compared as it is with the squared distance to the ally, so the real
   distance is the square root of aip3.
 
+**Settled** (from the 1.14d routine `0x5e1080`, re-read branch by branch): the nearest-ally finder (1.14d `0x5b0d00`)
+keeps the squared distance of its distance helper (1.14d `0x5b0bd0`), and the compare at 1.14d `0x5e1213` tests it
+against aip3 unsquared. So aip3 is a squared distance: aip3 = 25 pulls it back from 5 subtiles. The PantherWoman
+(row 18) is different: she squares her aip3 before the same compare, so hers is in subtiles. Other details from the
+same read: the distances are those of the routine's own target search (the largest int when it finds none), not the
+tick's; the flee 16 spends its roll whether the step starts or not; the move near is a spot up to 4 around the
+target. The 93847 think was not re-read; not checked in the game.
+
 | aip | Meaning |
 |-|-|
 | 1 | chance to move closer (target beyond aip6 - 6) |
 | 2 | chance to throw A1 (target within aip6) |
-| 3 | greatest distance from the nearest ally of its type (subtiles, or squared subtiles; see above) |
+| 3 | greatest distance from the nearest ally of its type, as a squared distance (25 = 5 subtiles) |
 | 4 | chance to flee (target closer than 8) |
 | 5 | idle frames |
 | 6 | throwing distance |
@@ -1525,9 +1582,13 @@ Confidence: **confirmed**. Hadriel's AI. It is the Idle routine: it idles 200 fr
 
 ### SiegeTower (monai row 113)
 
-Confidence: **compendium only**. The tower idles aip1 frames at a time. Whenever it has no living rider and a
-target exists, it picks a free imp within 20 (class 492, hostile, on its side, alive, with no mount yet) and makes
-itself that imp's mount. The imp then walks to the tower and boards it (see Imp).
+Confidence: **confirmed**, classic notes (1.14d think `0x5e1860`). The tower idles aip1 frames at a time. Whenever
+it has no living rider and a target exists, it picks a free imp within 20 (class 492, hostile, on its side, alive,
+with no mount yet) and makes itself that imp's mount. The imp then walks to the tower and boards it (see Imp).
+
+- The search (1.14d `0x5e1720`) takes the first match of the near-room scan, within squared distance 400.
+- It tests the tower's own owner link: a tower whose rider died but is still linked takes no new imp.
+- 1.14d idles aip1 twice after a claim; the second replaces the first. No draw.
 
 | aip | Meaning |
 |-|-|
@@ -1727,8 +1788,10 @@ aip4 of the rows with hcIdx 492, 493, 494 and 495 (current difficulty). Its own 
 
 ### Catapult (monai row 123)
 
-Confidence: **compendium only**. It plays A1 (no target) on aip1, else idles 15. The bombardment itself is cast by
-the CatapultSpotter.
+Confidence: **confirmed**, classic notes (1.14d think `0x5e34c0`). It plays A1 (no target) on aip1, else idles 15:
+one draw a think. The attack's missile goes where the catapult aims. The bombardment near players is cast by the
+CatapultSpotter. Catapults, spotters, the siege tower and the evil hut are on no levels.txt list: the Act V presets
+place them.
 
 | aip | Meaning |
 |-|-|
@@ -1764,10 +1827,20 @@ fails. Unlike the ThornHulk it keeps no frenzy counter or cooldown: every attack
 
 ### CatapultSpotter (monai row 126)
 
-Confidence: **compendium only**. The invisible unit that does the real bombardment.
+Confidence: **differs** on the catapult search, otherwise confirmed, classic notes (1.14d think `0x5ee040`). The
+invisible unit that does the real bombardment.
 
 - On its first tick, and on 3% of later ticks, it looks up to 3 steps along its facing for a dead monster of its
   catapult's class (its own class - 19). When it finds one it removes itself (death mode).
+- Our notes (1.14d routine, search `0x5edf70`) read the search differently: it starts at its own room's corner and
+  steps one room's width or height at a time, three times. The direction comes from its place in its monstats
+  upgrade chain (1.14d table `0x6ea9d0`: chain 0 (0, 1), 1 and 2 (1, 0), 3 (-1, 0)), not from its facing. At each
+  corner it asks the room there for a dead monster of its class - 19 (catapultspotter1 516 looks for catapult1 497);
+  one sends the spotter to death mode. 1.14d also reads the act's inactive monster records at each corner, so a dead
+  catapult whose room went idle still counts when its level keeps such records.
+- The aim: after the random offset, the nearest free spot of size 2 clear of mask 0x805, searched in rings 3 apart
+  (1.14d `0x64e7e0`); none found: idle 15. The cast is in A1 with no target, and the strike timer restarts whatever
+  the cast gave. The five strikes are drawn RL(5) from 287, 288, 303, 304, 305 (1.14d table `0x6e3514`).
 - Every aip2 frames, with a target, it fires on aip1; when it does not fire it idles aip2 frames.
 - The aim point is the target's position plus a random offset of up to aip4 on each axis. When that point fails a
   collision check it idles 15.
@@ -1824,10 +1897,14 @@ Confidence: **confirmed**. State 12 is removed from him on every tick. In this o
 
 ### GenericSpawner (monai row 129)
 
-Confidence: **compendium only**.
+Confidence: **confirmed**, classic notes (1.14d init `0x5e6190`, think `0x5e61b0`).
 
 - On its first tick it picks the class it will spawn: a random monster of the level's monster list if that monster
   has `genericSpawn` set in monstats.txt; else the first monster of the list that has it; else class 496.
+- That pick does not decide what spawns: the Nest skill (1.14d srvst 49) takes the caster's monstats `spawn` column
+  first, which evilhut fills (imp1). In vanilla the pick only spends one seed draw.
+- The spot test is a small unit's cross two east and four south of the hut, in a room and clear of mask 0x3c01. A
+  busy spot keeps the try's frame and counts nothing. After aip3 spawns it dies with no treasure.
 - Without a target, or with the target farther than 20, it idles 20.
 - After aip3 spawns it removes itself (death mode).
 - Otherwise, at most every aip1 frames, it casts the built-in skill 167 on the target when a unit of class 528
@@ -1854,13 +1931,23 @@ SK1 when the target is within aip3 and aip4 succeeds; otherwise it approaches on
 
 ### Wussie (monai row 131)
 
-Confidence: **compendium only** (our own disassembly notes cover only the quest side). The trapped barbarians of
-Act V. No parameters.
+Confidence: **confirmed**, classic notes (1.14d think `0x5ee3c0`, kind 2, no init or alt; 93847 not read). The
+trapped barbarians of Act V (act5pow 534, five per cage). No parameters. Like the Harrogath barbarians they are
+monstats inTown and good (Align 1).
 
-- Not freed yet: when a player is near and the quest check passes they are freed and join the game's unit list 8,
-  like the NpcBarb. Otherwise they call for help 10% of the time. They idle 25 between ticks.
-- Freed: 70% of the time they walk toward their exit; otherwise they wander 4 (10%) or idle 10. Within 4 of the
-  end of their path they are removed, with a quest update.
+- Cage portal open: when none of the cage is gone and the portal is 4 or more away, 70% walk at the portal, else 10%
+  step within 4 of itself, else idle 10. Otherwise (a soldier of the cage gone, or within 4) it leaves: a quest count
+  (1.14d `0x588880`; five gone mark the cage gone) and its removal.
+- No portal: it looks for the first player within 15. With no dead cage door (monstats 434 in mode DD) in that
+  player's room or the rooms next to it, it tells the quest it was seen (1.14d `0x588dd0`: status 5 unless already
+  so or five killed) and hails the player (`0x8a`) when a draw % 1000 is under 100. With a dead door there it joins
+  the game's node list 8 (so evil monsters can target it), and when a dead door is within 15 of the soldier it
+  calls the door-down step (1.14d `0x5888d0`), which opens the cage's portal and gives progress once. That door search
+  breaks out of a room at its first match but goes on to the next rooms, so the last room with a match wins.
+- It idles 25 at the end of every tick.
+- Quest calls it makes: find the cage's portal (1.14d `0x588d60`), is the cage gone (1.14d `0x588830`), and the three
+  above. A plugin replacing this think must keep them, or Rescue on Mount Arreat never completes
+  ([quests-acts.md](quests-acts.md) section 8.2).
 
 ### AncientStatue (monai row 132, think `0x5c69d0`)
 
@@ -1914,12 +2001,13 @@ on aip3 (A1 or A2, 50/50), else idle 25.
 Confidence: **confirmed**. Baal on his throne runs the five minion waves. Only aip1 is read, and SK2 to SK4 are
 not used: the wave skills are cast by id.
 
-- With no wave out he spawns the next wave (its boss is one of superuniques 61 to 65, in order), casts the built-in
-  skill 285 on himself in the S3 animation and waits 250 frames.
+- When the last wave is dead and he has not taunted yet, he casts the built-in skill 285 on himself in the S3
+  animation (it uses up the bodies and deals no damage), laughs and waits 250 frames. The next wave's boss is one of
+  superuniques 61 to 65, in order.
 - While wave monsters are alive (searched within 64) he casts SK1 at the target on aip1, as long as SK1's
   aurastate is not on him and the target does not carry SK1's auratargetstate; else idle 10.
-- When a wave is dead he casts the built-in skill 286 in the S3 animation at the point 13 subtiles from him along
-  +Y, and waits 100 frames before the next wave.
+- After the taunt he casts the built-in skill 286 in the S3 animation at the point 13 subtiles from him along +Y,
+  which spawns the wave, and waits 100 frames. Details in [monster-ai.md](monster-ai.md) section 11.
 - After the fifth wave he turns into class 559 (the BaalToStairs Baal), gets state 142 and switches to that
   class's AI.
 - While he waits between waves the routine works out its delay with the wrong sign, so it thinks again every
@@ -2059,9 +2147,18 @@ Where the two sources disagree. Check these in the game before you build on them
 
 | AI | Open question |
 |-|-|
-| Mephisto | Are aip2 and aip3 read? Our notes say his target search rolls them (weakest enemy, then closest player); the compendium says only aip1 is read. |
-| Summoner | Does aip6 (flee 6 when the target is closer than 5) ever take effect? The compendium says a later order in the same tick always replaces it; our notes list it as a working chance. |
-| PantherJavelin | Is aip3 a distance in subtiles (compendium) or a squared distance (our notes, classic routine)? |
+| CatapultSpotter | Does the catapult search follow the spotter's facing (compendium) or step from its room's corner in a direction set by its upgrade-chain place (our notes, 1.14d routine)? |
+| FetishShaman | Is its last step a circle walk 4 on aip4 (compendium) or a walk at the target (our notes, 1.14d routine)? |
+
+Settled since the last update (each was a **differs** row here):
+
+| AI | Answer | How |
+|-|-|-|
+| Mephisto | aip2 and aip3 are read (weakest enemy, then closest player); the aip3 branch is live only in D2R | the 1.14d routine `0x5f77c0` and the 93847 search `0x5b2370` |
+| Summoner | aip6 spends a draw but never makes him back off: the cast or wander later in the same tick replaces the walk | the 1.14d routine `0x5f85c0`, step by step |
+| PantherJavelin | aip3 is a squared distance (the PantherWoman's is in subtiles) | the 1.14d routine `0x5e1080`, the compare at `0x5e1213` |
+
+None of the three was watched in the game.
 
 Smaller points:
 
@@ -2076,7 +2173,8 @@ Smaller points:
 - Every AI marked "classic notes" was checked in the classic 1.14d routine, not in build 93847. The numbers agree
   with the compendium's 3.3 reading, but a re-read in the current build would settle them.
 
-AIs described from the compendium alone (not covered by our own disassembly notes): Sarcophagus, ElementalBeast,
-FlyingScimitar, Tentacle, TentacleHead, SandMaggotQueen, QuillMother, Trap-Missile, Trap-Poison, Trap-Nova, JarJar,
-InvisoSpawner, MosquitoNest, Trap-Melee, 7TIllusion, DarkWanderer, ArcaneTower, DesertTurret, Spirit, TrappedSoul,
-SiegeTower, MinionSpawner, Catapult, CatapultSpotter, NpcBarb, GenericSpawner and Wussie.
+AIs described from the compendium alone (not covered by our own disassembly notes): ElementalBeast, Tentacle,
+TentacleHead, SandMaggotQueen, QuillMother, Trap-Missile, Trap-Poison, Trap-Nova, JarJar, InvisoSpawner,
+MosquitoNest, Trap-Melee, 7TIllusion, DarkWanderer, ArcaneTower, DesertTurret, Spirit, TrappedSoul, MinionSpawner and
+NpcBarb. Sarcophagus, FlyingScimitar, SiegeTower, Catapult, CatapultSpotter, GenericSpawner and Wussie are now
+checked against the 1.14d routines.

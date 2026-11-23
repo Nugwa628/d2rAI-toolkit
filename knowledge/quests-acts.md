@@ -312,6 +312,91 @@ kill handler `0x5b52e0` with the Diablo branch at `0x5b5360`; static only):
 Anya's reward drop sounds in D2R 3.3 sounds.txt rows: bow 211, staff 245, orb 234, head 222, metal shield 231, helm
 223, sword 246 (by the class item drawn; unverified beyond these rows).
 
+### 8.1 Handlers and objects (93847)
+
+Read from the 93847 quest table and each quest's init (an init can install more handlers than the table lists);
+**static only**. Event slots: 0 NPC activate, 2 NPC deactivate, 3 changed level, 8 monster killed, 10 leave, 11 NPC
+message, 13 founder (game start), 14 joiner.
+
+| Quest (word) | init | Handlers | Filters, sequence | Objects (class: OperateFn / InitFn) |
+|-|-|-|-|-|
+| Siege on Harrogath (35) | `0x548120` | ev0 `0x54b640`, ev2 `0x54b5b0`, ev3 `0x54b470`, ev8 `0x54b750`, ev10 `0x54b830`, ev11 `0x54bce0`, ev13 `0x54b870`; NPC table `0x239f840` | status `0x549fc0`, active `0x546190` | Larzuk's standard 543 (- / 71) |
+| Rescue on Mount Arreat (36) | `0x548220` | ev0 `0x54c090`, ev2 `0x54c010`, ev3 `0x54be70`, ev8 `0x54c1e0`, ev11 `0x54c810`, ev13 `0x54c530`, ev14 `0x54c4f0`; NPC table `0x239fc90`; rune table `0x23a02c0` | active `0x546230` | caged soldiers 473 (- / 62, `0x5474d0`) |
+| Prison of Ice (37) | `0x5483e0` | ev0 `0x54cdc0`, ev2 `0x54cd20`, ev3 `0x54cb40`, ev10 `0x54d040`, ev11 `0x54d610`, ev13 `0x54d280`, ev14 `0x54d0c0`; NPC table `0x23a02d0` | active `0x54a0b0`, status `0x546430`, sequence `0x54ab60` | ice prison 558 (67 / 74), Anya in town 459 (- / 66), Anya outside 460 (- / 67), Nihlathak in town 461 (- / 68), outside 462 (- / 69) |
+| Betrayal of Harrogath (38) | `0x548590` | ev0 `0x54ddc0`, ev2 `0x54dd30`, ev3 `0x54dc90`, ev8 `0x54df80`, ev11 `0x54e570`, ev13 `0x54e0d0`; NPC table `0x23a0820`; Anya's item tables `0x23a1870` / `0x23a18f0` / `0x23a1970` (by difficulty) | active `0x54a210`, status `0x546660`, sequence `0x54ae70` | none of its own |
+| Rite of Passage (39) | `0x5486e0` | ev0 `0x54e990`, ev2 `0x54e930`, ev3 `0x54e6e0`, ev8 `0x54eb00`, ev10 `0x54ef30`, ev11 `0x54f290`, ev13 `0x54ef70`; timer `0x54aff0`; reward `0x550c20` | active `0x546930`, sequence `0x54aa10` | statues 474-476 (62-64 / 63-65), altar 546 (65 / 72), Gateway 547 (66 / 73), invisible ancient 561 (69 / -), summit door 564 (71 / 76) |
+| Eve of Destruction (40) | `0x5487f0` | ev0 `0x54f800`, ev2 `0x54f790`, ev3 `0x54f640`, ev8 `0x54fa70`, ev10 `0x54fd90`, ev11 `0x550450`, ev13 `0x54fe50`, ev14 `0x54fdf0` | active `0x546b50`, sequence `0x54b220` | chamber and throne portals 563, 569 (70 / 75), last portal 565 (72 / 77), Zoo 567 (- / 79) |
+
+- Classes are the tables' own ids (monstats `*hcIdx`, objects `*ID`), not line numbers: both tables skip a divider row
+  before the expansion rows (Larzuk is 511, the altar 546).
+- The chain: each quest's sequence call readies the next, in the order Siege, Rescue, Prison of Ice, Betrayal, Rite,
+  Eve.
+- Every Act V OperateFn and InitFn above is used only by Act V objects, except InitFn 79 (the Zoo), which D2R rows
+  577-586 share.
+- Completion sounds moved in D2R: Siege 87, Rescue 88, Eve 90 (1.14d 80, 81, 83); Nihlathak's kill plays 82; a player
+  without D at the last portal hears sound 20 (1.14d 19).
+
+### 8.2 Siege on Harrogath and Rescue on Mount Arreat
+
+Logic from the classic routines, handler addresses from 93847; **static only**.
+
+- **Siege** (Larzuk 511 gives it; Malah's intro line sets state 1). Shenk is superunique 42 (monstats 479). The players
+  who share his kill are those in his room or a room next to it. The reward is P: one socket at Larzuk. His line 20090
+  to a player with D puts Siege in state 5, and the sequence gives Rescue state 1 (a founder whose Siege is done or
+  closed gets the same step at game start).
+- **Larzuk's standard** (InitFn 71) spawns Larzuk once per game, on a free spot of size 2 (mask 0x100) found from the
+  standard's spot in up to 100 rings. No free spot: no Larzuk, and the standard tries again when it is made again.
+- **The cages** are monsters, not objects: monstats 434 `prisondoor`, one per cage. The barricade walls 524 / 525 are
+  unrelated. InitFn 62 (1.14d `0x588600`) spawns the cage's five soldiers (act5pow 534) at the cage's spot with a ring
+  search; the cage's own collision makes many tries fail.
+- A door's death frees the living soldiers within 15 of it. Once any soldier is freed, a soldier who dies outside the
+  freed list counts as killed; five killed close the quest for the game.
+- When spawned = freed + killed with all three cages in play: 12 or more freed give P, D and Custom1-3 to the player
+  near the soldiers and his party in Act V; 11 or fewer give only N. Runes by freed count: 15 Ral Ort Tal, 14 Ral Ort,
+  12-13 Ral (`r07` `r08` `r09`), every difficulty.
+- The soldiers' own think (monai 131 Wussie, [monster-ai-routines.md](monster-ai-routines.md)) runs the cage's step:
+  it opens the cage's portal (a Cain portal, object 189) for the player and walks the soldiers out.
+- Rescue's `0x5d` count is the number of soldiers still caged; its blocked cycle carries flag 0x20.
+
+### 8.3 Prison of Ice and Betrayal of Harrogath
+
+**static only**.
+
+- Reaching the Arreat Plateau readies Malah (Nihlathak leaves town); her line 20116 gives Prison of Ice. Malah gives
+  one potion (`ice`) per game (20127).
+- The prison (558) appears one quest tick after the Frozen River's "Anya outside town" spot comes into play. Without
+  the potion it speaks 20131. With it one potion is taken and the prison thaws: the operator and the parties of every
+  player with D get D and P, the rest N; game event 16.
+- A prison that is not neutral, or whose thaw timer runs, refuses every operate (93847 `0x547d40`), so a second potion
+  is never used.
+- The thaw opens the prison (it has no operating mode, so it goes straight to opened), and the next tick places thawed
+  Anya (527) near it: the spot alone, then ring searches of 5, 10 and 15 (1.14d `0x5459a0`; the prison still stands on
+  the spot, so the spot alone fails). Prison of Ice's sequence then readies Betrayal.
+- Thawed Anya opens her portal and goes home, or Malah's scroll (20132) sends her home; she appears on her town spot
+  with a portal that closes after five updates.
+- The scroll (Custom4) and Anya's item (20136: Custom5, Custom6) together give G.
+- **Scroll of Resistance** (`tr2`; use 93847 `0x5805c0`): reading it sets Custom3 and grants +10 to the fire,
+  lightning, cold and poison resistances for every difficulty whose record has Custom3. The total is rebuilt from the
+  records at each join (1.14d `0x58a0a0`; 93847 `0x483b20` and `0x484550` call `0x5472a0` outside classic games). On a
+  later difficulty's scroll 1.14d attaches a second stat list beside the join's, so its server can hold 10 + 20 while
+  the client was sent 20.
+- Entering Nihlathak's temple closes Prison of Ice for the game.
+- Anya's 20137 gives Betrayal; closing her dialog opens the red portal to the Halls of Pain 5 subtiles from her.
+- **Nihlathak's death**: P, D and the personalize reward to the players by him with Prison of Ice's G or P and to
+  their parties in Act V; N to the rest; sound 82 to the D players; game event 17; an 8-tick status timer. Anya's thanks
+  (20148) set EA.
+- **Personalize** (C->S `0x2e` kind 3, 93847 `0x4fc230`): an identified item from the inventory grid or the cursor
+  that the nameable test (1.14d `0x62c6a0`) accepts: not gold, not a monster's item (item flag 0x1000), not a body part
+  or quiver, not broken, and its base Nameable. The item keeps its id and socket children, gets the personalized flag
+  and the character's name, and is not repaired. Then G set, P clear, and `0x58 {item, 6}`. A refusal sends nothing.
+- D2R deltas from classic: the scroll handout sets Custom4 before making the scroll; Anya's item sets its flags before
+  the item is made; the kill's party walk sets Betrayal's own P and D (classic used Prison of Ice's setter); a
+  founder-closed game always gets Anya's portal (classic tested the Halls of Pain waypoint); lines 20143 and 20148 are
+  Anya's.
+- Nihlathak's think announces him to the quest: see [monster-ai.md](monster-ai.md) section 11.
+
+### 8.4 Rite of Passage
+
 **Rite of Passage** (classic and 93847): only characters of level 20 / 40 / 60+ get S, LT or credit; a lower player
 can fight but cannot pass the Gateway (G or P required). The fight resets (the Ancients deactivated with no kill,
 `0x58c000`) when:
@@ -324,6 +409,50 @@ can fight but cannot pass the Gateway (G or P required). The fight resets (the A
   portal on the summit.
 - Leaving by the stairs does nothing. An intro game leaves the summit and Gateway open; the Ancients fight again for
   no credit. Reward experience 1.4M / 20M / 40M, capped at one level.
+
+More of the fight (**static only**; the kill handler checked against classic):
+
+- The quest: Qual-Kehk's 20153 gives S, leaving town gives LT, and reaching the summit shuts the summit door (564; its
+  opened mode is the shut one).
+- The altar (546) shows 20002 and wakes the three statues: special mode 1, then each lets out its Ancient (540-542,
+  superuniques 43-45) one quest tick later (mode 2).
+- Each Ancient's death first makes missile 541 (ancient death center): owned by the dead Ancient, from where it fell,
+  aimed at its statue, level 1 (1.14d `0x58c8d0`, inlined in 93847's kill handler at `0x54eba2..0x54ecc4`; 1.14d also
+  wrote the statue's guid into the missile's target x, D2R does not). The row only flies; the client draws it. Then
+  client event 18, and two ticks later the statue stands again.
+- The last death opens lvlwarps 79 and 80 of level 120; credits G and D to the killer, every player on the summit and
+  their party members in Act V (N to the rest); spawns the invisible ancient (561; its last word 20169 sets EA); and
+  hands Eve of Destruction on.
+- The statue and Ancient thinks ask the quest on every think whether the rite may start and how many portals are open
+  (93847 `0x549e20`, `0x547200`, `0x547280`; 1.14d `0x58cfe0`, `0x58cf90`, `0x58cfb0`).
+
+### 8.5 Eve of Destruction
+
+**static only**.
+
+- The Ancients' death gives the quest (state 2, S).
+- The Worldstone Chamber is shut at game start: lvlwarp 82 of level 131 is closed and the chamber portal 563 refuses.
+- It opens only when Baal walks off his throne into the portal: his BaalToStairs think calls 93847 `0x546dd0` (1.14d
+  `0x58e600`), which sets the open flag, opens lvlwarp 82 and moves an active quest to status 3. No monster's death
+  opens it, Lister's included. Timing and the lock-up risk: [monster-ai.md](monster-ai.md) section 11.
+- The portal (InitFn 75) is made in mode 1 (operating) and stays there until Baal walks into it.
+- **Baal's death**: client event 19, status 4; credit to the players in the chamber, then their party members in Act
+  V (N to the rest); sound 90; the game record's D (a D2R addition); then:
+  - when the killer was new to the quest, one gold pile per credited player of 6000 x difficulty + 1500 plus a
+    quest-seed roll of 1500;
+  - in a non-intro game, Tyrael (521) 5 subtiles up and to the left on a free spot (size 5, mask 0x400, up to 100
+    rings; none: no Tyrael).
+- Leaving Tyrael opens the last portal (565) 5 subtiles right of the first player in the chamber, found the same way.
+  1.14d counts the portal as opened even when none was made.
+- A player with D who takes it goes to Harrogath and gets the end cinematic (`0x61`, video 7). D2R's handler
+  (`0x549990`) has no busy test, no interaction reset and no client save, which 1.14d's (`0x58e740`) had. The portal
+  does nothing until it is open (mode 2).
+- **Character progression** (1.14d `0x538680`): the character's progression is raised to act + difficulty x acts (5
+  acts for an expansion character, 4 for a classic one), never lowered. Eve calls it with act 5 when it credits Baal's
+  kill and when a founder who already has the quest done (G or B) starts a game; Act IV's quest calls it with act 4 only
+  for a classic character; the Andariel, Duriel and Mephisto credits (1.14d `0x596210`, `0x59c810`, `0x5bc140`) call
+  it with 1, 2 and 3. Nightmare needs progression of at least the act count, Hell twice that; the value sits in bits
+  8-12 of the save header's character flags.
 
 ## 9. Pitfalls
 
