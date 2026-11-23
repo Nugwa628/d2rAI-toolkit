@@ -158,7 +158,7 @@ Others seen:
 | **Ranged pets**: the mod's summon code read a flag in one of the summon skill's `Param` columns and switched the pet's AI to its ranged branch | D2R's summon function has no such step: the pet melees | Plugin: after the pet is made, set its AI control field (observed in 93847: monster data `+0x30` -> `+0x44 = 1`, `+0x48 = 0` picks the NecroPet ranged branch) |
 | Raven-AI pets: attack count = `Param1 + (lvl-1)*Param2` (a negative Param1 made a pet permanent) | D2R takes the count from the skill's **`calc3`** | Write the count formula into `calc3` (e.g. `ln12`), or the pet dies on its first think |
 | The mod's skill picker ignored `leftskill` / `rightskill` | D2R honours them | Section 7 |
-| Cube output "open a portal" for any level | D2R's cube executor (`0x5269c0`) opens only the Cow Level | Plugin hook on the output handler |
+| Cube output "open a portal" for any level | D2R's `Cow Portal` opens only the Cow Level; the D2R-only `Red Portal,lvl=N` opens level N, but only from the town of N's act ([cube.md](cube.md#52-red-portal-d2r-only)) | `Red Portal,lvl=N` when the town and act fit; else a plugin hook on the output handler |
 | A classic timed potion added its stat as is | D2R's timed potion (`pSpell` 3, `0x57ecb0`) treats a stat's calc as the **total over the duration**, except hitpoints, mana, manarecovery and hpregen; every other stat is stored as calc / len | Multiply the calc by the `len` formula for those stats |
 | Quest kill handlers | D2R runs a quest's kill handler only while the quest is still open in that difficulty | Test with a character whose quest is open |
 

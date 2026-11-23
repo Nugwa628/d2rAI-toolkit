@@ -12,7 +12,7 @@ anything "the game decides" hooks this half. This file is a map of it for mod an
   **unverified** = a classic rule assumed to hold.
 - Messages (ids, sizes, reply order) are in [network-messages.md](network-messages.md). Combat, regeneration,
   experience and formulas are in [combat-formulas.md](combat-formulas.md). Functions already listed in
-  [d2r-93847-addresses.md](d2r-93847-addresses.md) are not repeated; the cube is in
+  [d2r-93847-addresses.md](d2r-93847-addresses.md) are not repeated; the cube (transmute, outputs, Cow and Red Portals) is in [cube.md](cube.md) and its limits in
   [engine-limits.md](engine-limits.md); world objects (chests, shrines, wells, doors, traps) are in
   [objects.md](objects.md).
 
@@ -252,7 +252,7 @@ Differences from classic worth knowing:
   20-entry item spell table `0x236fe30`). pSpell 1 identify, 2 town portal, 3/5/6/9 potions, 7 open cube.
 - Potion class bonus comes from charstats `HealthPotionPercent` / `ManaPotionPercent` in D2R (classic hard-coded it).
 - Socketing (`0x4f9f40`): the filler must be type `sock`; it becomes a child of the target and its properties count
-  for the parent. Completing a runeword sets the runeword flag and triggers a save.
+  for the parent. Completing a runeword sets the runeword flag and triggers a save; the runes.txt row must also pass the ladder rules (`disallowCraftingInLadder` / `...NonLadder` and the ladder seasons, `0x46eb00`, see [cube.md](cube.md#ladder-rows)), else the base stays filled with no runeword.
 - Weapon swap is a physical move between body slots 4/5 and 11/12; see [network-messages.md](network-messages.md)
   for message 0x50 and its replies.
 
@@ -340,17 +340,43 @@ personal stash, never the shared stash. The server recomputes every price; the c
   attribute and stat 4 `statpts`; vitality and energy move max life/stamina/mana by `per-point byte * delta * 0x40`
   (32-bit, wraps), the current value only when the amount is positive, then cut to the new max. A save whose
   attributes sit below the start values makes the pool go negative. Sound 2 plays at the end.
-- Imbue (Charsi, C->S 0x2e, exactly 21 bytes: +1 service, +5 NPC guid, +9 item guid, +0xd "has a location", +0x11
-  location; static only). `0x4fc230` runs **twice**: the handler with commit off, then a task on the game's task list
-  with commit on. Both passes check NPC reach (`0x53b8f0`, 0x32), the item (exists, identified, location matches,
-  `0x3865b0`), the service on the NPC row, the quest gate pending (quest 3 for Charsi), service = imbue (sockets and
-  personalize exist only on Act V rows) and the item test `0x36aed0`: an items.txt row, not gold, no flag 0x1000
-  (unsellable), `bitfield1` bit 0 set (clear for misc), no throwable type in a Classic game, not a quest item except
-  Wirt's leg, nothing socketed and no flag 0x800, quality low/normal/superior. Both passes work on a 0x4888-byte
-  inventory copy (`0x472590`, applied by `0x471500`). The new item (`0x43cd50`): same class, rare, ilvl = player level +
-  4 (D2R adds 4 at every level; classic only above level 5), capped at 255, ethereal kept, identified and repaired,
-  personalization kept. The spend `0x5da1c0` deletes every Horadric Malus carried and sets quest 3 granted. Reply S->C
-  0x58 (7 bytes: item guid, u16 6). Quirk: when the first pass's inventory step fails the reward is already spent.
+- NPC item services: C->S 0x2e (CCMD_UPGRADEITEM, handler `0x4ae280`, body `0x4fc230`, exactly 21 bytes; static
+  only): +1 service (1 imbue Charsi, 2 sockets Larzuk, 3 personalize Anya; must equal the NPC row's `+0x0b`), +5 NPC
+  guid, +9 item guid (echoed in the 0x58), +0xd nonzero when the item is in the inventory grid, +0x11 that cell (u16
+  x, u16 y; both 0 otherwise). No gold is paid; the quest's pending reward is spent. **Checks, in the handler's order**
+  (every refusal only logs and sends nothing):
+  1. the item is an item unit (`0x48fe80`, any item in the game, not only the player's) and identified (flag `0x10`);
+  2. its place matches (`0x3865b0`): a grid item needs +0xd set and +0x11 equal to its cell, any other item both 0;
+  3. the NPC is in the rooms around the player (`0x53b8f0`, radius 0x32);
+  4. the NPC row (`0x3971a0`, by difficulty and class) offers this service;
+  5. the row's gate (`+0x10`, quest + 1): above 0x2a refused, 0 none, else the quest's pending bit;
+  6. the item test: imbue `0x36aed0` (an items.txt row, not gold, no flag 0x1000, `bitfield1` bit 0 set (clear for
+     misc), no throwable type in a Classic game, not a quest item except Wirt's leg, nothing socketed and no flag
+     0x800, quality low/normal/superior), sockets `0x36b410`, personalize `0x36b1d0`;
+  7. the item leaves its place on a 0x4888-byte inventory copy (`0x472590`, or the mover `0x471e90` for sockets and
+     personalize on a grid item; applied by `0x471500`).
+
+  An earlier reading here put the NPC reach first; the order above is from a later pass over `0x4fc230`. Because step 1
+  accepts an item the player does not hold and the first imbue pass spends the reward before step 7, such a request
+  leaves the reward spent and the malus gone with no new item.
+  - **Imbue** runs `0x4fc230` **twice**: the handler with commit off (it spends the reward, runs the copy step, puts
+    the quest bits back and queues a 0x40-byte task on game `+0x5808`), then the task with commit on. The old unit is
+    freed (`0x43ec10`); a new rare of the same class (`0x43dac0`, `0x43cd50`), ilvl = player level + 4 (D2R adds 4 at
+    every level; classic only above level 5), capped at 255, ethereal kept, identified (`0x53bb50`) and repaired
+    (`0x46ea70`), personalization kept, **with a new id**. The spend `0x5da1c0` deletes every Horadric Malus carried
+    (its 0x9d 5, or 0x42 on the cursor, comes before every other message), sets quest 3 granted and clears pending.
+    Then 0x42 `{0, player}` whatever the cursor holds, the old item's 0x9d 5, the rare's 0x9d 4 in the same cell or the
+    first that fits; for a cursor item 0x42 twice and the rare dropped at the player (0x9c 2; freed with no spot).
+  - **Sockets**: the same item and id get flag `0x800` and a count (`0x375560`) by quality: low, normal and superior
+    the maximum for the item level (`0x36ead0`), magic 1-2 from the item's own seed, set to tempered 1, each under the
+    quality's cap. Spend `0x548b60`.
+  - **Personalize**: the same item and id get flag `0x1000000` and the character's name (`0x36dfa0`). Spend
+    `0x547c60`. Neither sockets nor personalize repair the item or refill charges (1.14d's `0x579d60` cloned and
+    repaired it). A grid item comes back as 0x9d 4 in its cell with no 0x9d 5; a cursor item gets 0x42 and is dropped.
+  - Last, S->C 0x58 `{u32 the request's item, u16 6}` (`0x479bc0`), also for an imbue whose rare has a new id.
+  - An item outside the grid and the cursor (stash, cube, belt, body) is taken out by `0x472590` and its result
+    dropped. The gate quest comes from the row, but each service's spend is fixed to its own quest; they agree on every
+    shipped row.
 - Payment `0x5416d0`: carried, then stash. A pool that would end below 0 or above its cap is set to 0.
 
 ### Waypoints, town portals, travel
@@ -373,7 +399,7 @@ personal stash, never the shared stash. The server recomputes every price; the c
   portals; **5 s since the last hostility declaration** (the same `+0x1e8` as waypoints, not the last warp); a non-owner
   must be in the owner's party (a missing owner is let through); state 0x66 blocks reuse for 75 frames; the player is
   put on a free spot at the twin and walks to that spot + (5, 5); the owner going town -> field uses the pair up,
-  field -> town does not. The red portals have no owner and are never used up.
+  field -> town does not. The red portals are never used up (the cube's Red Portal names the cuber as owner, but nothing closes it; [cube.md](cube.md#5-special-outputs)).
 - Objects (C->S 0x13 / 0x41, `0x4b0f80` -> `0x593630`): the object row must allow operating in its current mode
   (`Mode0-7`), unit distance at most 50; only OperateFn 25 takes a cursor item. OperateFn numbers: 6 tome, 9 stones,
   10 cage, 12 tree, 15 portal, 21 rack, 23 waypoint, 32 stash. Every check, the init and operate tables, chests,

@@ -27,7 +27,7 @@ Data first: many "new" behaviours are an existing D2R function with different ta
 
 | Usually data (modkit patches) | Usually plugin (D2RLoader, from `plugin-template/`) |
 |---|---|
-| New item bases and item types (misc, itemtypes) | What a cube **output** does beyond D2R's built-ins (the "portal" output opens only the Cow Level) |
+| New item bases and item types (misc, itemtypes) | What a cube **output** does beyond D2R's built-ins (`Cow Portal` opens only the Cow Level; `Red Portal,lvl=N` opens level N from the town of its act, [cube.md](cube.md)) |
 | Affixes and the stats they roll (magicprefix/suffix, itemstatcost, properties) | Reading an item's stats at the moment something happens |
 | Areas: levels, lvlprest / lvlmaze, area level (`MonLvl*`), monster lists, density | Changing monsters as they spawn, or anything per game rather than per row |
 | Drops (treasureclassex), recipes (cubemain), vendors | New cube conditions (D2R checks player ops 1-14 and item ops 15+ only; unknown ops pass) |
@@ -98,7 +98,8 @@ The ones new systems hit most (all in [engine-limits.md](engine-limits.md)):
   ids: count them before you design "one area per tier".
 - levels.txt `Layer` below 100; clear `Position` on new maze levels; ship every tile file a level type uses.
 - Portals link levels **within one act** only.
-- The cube "portal" output opens only the Cow Level; unknown cube `op` values are ignored.
+- The cube's `Cow Portal` output opens only the Cow Level; `Red Portal,lvl=N` opens any level, but only from the town of
+  that level's act ([cube.md](cube.md#52-red-portal-d2r-only)); unknown cube `op` values are ignored.
 - Indexed tables: append only. Item type numbers D2R tests in code stay where they are.
 - 30 skills per class; new events are never raised by D2R itself.
 
