@@ -20,7 +20,9 @@ with the game under Proton (`docs/linux.md`).
   character numbers in `knowledge/combat-formulas.md`; spawning and monster AI in `knowledge/monsters-spawn.md`;
   level generation and travel in `knowledge/map-generation.md`; client/server messages in
   `knowledge/network-messages.md`; the item record in `knowledge/item-format.md`. Deeper topic files: drops,
-  inventory and vendors in `knowledge/items-inventory.md`; skill functions and missiles in
+  inventory and vendors in `knowledge/items-inventory.md`; the cube's transmute, outputs and portals in
+  `knowledge/cube.md`; Pandemonium, Uber Tristram and the Uber Ancients in `knowledge/endgame-events.md`; trading,
+  hostility and party rules in `knowledge/trade-party.md`; D2RLoader's internals in `knowledge/d2rloader.md`; skill functions and missiles in
   `knowledge/skills-missiles.md`; monster AI and corpses in `knowledge/monster-ai.md`; every AI routine and its
   aip values in `knowledge/monster-ai-routines.md`; world objects in
   `knowledge/objects.md`; quests per act in `knowledge/quests-acts.md`; mercenaries in `knowledge/hirelings.md`;

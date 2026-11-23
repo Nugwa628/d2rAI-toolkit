@@ -16,13 +16,16 @@ description: Create or change Horadric Cube recipes in a Diablo II Resurrected m
   (`mag`, `rar`, `uni`, `set`, `crf`, `tmp`, `sock=N`, `rep`, `rch`, `pre=`, `suf=`, `reg`, `exc`, `eli`,
   `uns`, `rem`), `lvl`/`plvl`/`ilvl` (item level rules), `mod 1-5` + `chance`/`param`/`min`/`max` (properties);
   `output b`/`output c` with the same columns for extra outputs.
+- Portal outputs: "Cow Portal" opens only the Cow Level. "Red Portal" (D2R only) opens level `lvl=` from the town of
+  that level's act, and `qty` is its per-game limit (knowledge/cube.md).
+- Extra items left in the cube are destroyed by the transmute; equal inputs are taken in placement order.
 
 ## Conditions (op/param/value): D2R hard limits
 D2R checks two kinds of conditions (recipe search 0x529090 and input matcher 0x529d50, build 93847):
 - **Player conditions, ops 1-14** (on the player: date ranges, stat comparisons using param = stat ID and
   value). Any other op number here is **ignored (the recipe always passes)**, it does not fail.
 - **Item conditions, ops 15-27+** are checked on each input item (stat comparisons on the item).
-So a recipe gated on something D2R doesn't check (gold cost, a quest flag, a random chance, a second condition)
+Op 28 is exact in D2R: a quest item from a lower difficulty no longer counts (knowledge/cube.md). So a recipe gated on something D2R doesn't check (gold cost, a quest flag, a random chance, a second condition)
 needs a plugin hook on the recipe search; see the d2r-engine skill and knowledge/d2r-93847-addresses.md (cube).
 Prefer item-based gating (an input token item, a stat on the input) which works in data alone.
 
