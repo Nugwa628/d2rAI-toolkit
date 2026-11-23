@@ -222,6 +222,12 @@ later, but clients never see it.
 Draw helpers the thinks use: a percent roll is one draw `% 100`; `rand(n)` draws nothing when n is 0 or less, and uses
 a mask instead of a modulo when n is a power of two; a coin is the low bit of one draw. So a think's draw count depends
 on its parameters: an aip of 0 passed as a wander distance saves a draw.
+**Path overrides merge** (1.14d `0x5de190` -> `0x5a6260`, **static only**): the velocity call writes only the fields
+it is given as non-zero (path type, velocity bonus, distance; distance at most 77) and keeps the others. So a run
+bonus set before a path type 13 walk or a step away stays in place, and the classic walks merge the same way (1.14d
+`0x5ded69`, `0x5df26d`, the Countess). A plugin that resets all three on each call changes how far and how fast a
+monster moves.
+
 
 Other draw sites: the mode-change elemental damage before every mode start but GH (see
 [combat-formulas.md](combat-formulas.md)), and the death start. Ordinary mode changes draw nothing else.
@@ -624,6 +630,65 @@ There is no timer or teleport fallback: if he cannot reach the portal the walk i
 chamber stays shut. In the stock tables the throne's aip1 is 25 and the stairs form's aip1 is 4 on every difficulty.
 A mod that changes class 559's speed, the portal's place or the throne room's collision can therefore lock the fight.
 
+More on the throne and the walk-off (93847 thinks read next to 1.14d `0x5ef320` / `0x5ef620`; **static only**):
+
+- The count in step 1 is the scan with callback id 3: living monsters within 64 that are not hostile to the throne.
+  Skill slot 1 is cast only when its aura states allow it, and a skill 1 of 0 or less skips the skills.txt lookup
+  (D2R).
+- The taunt's skill 285 is srvdo 141; its corpse walk is in [skills-missiles.md](skills-missiles.md) section 10.
+- The waves are skill 286 with the wave's superunique written into the skill's param1 before the mode change (93847
+  `0x5c735b`). The leaders: Colenzo, Achmel, Bartuc, Ventar, Lister (superuniques 61-65; classes fallenshaman5 62,
+  unraveler5 105, baalhighpriest 557, venomlord 558, baalminion1 571).
+- **S3 needs the cast callbacks.** Baal on his throne casts in S3 (monstats Sk1mode / Sk2mode). The game gives the
+  throne, Baal and his clone the cast's mode callbacks for S3 through monstats `SplGetModeChart` (1.14d
+  MONSTERMODE_GetCallbackTableRecord). A server or plugin that plays every monster's S3 as a plain special animation
+  freezes him after his first skill: no skill starts and no think follows, so no taunt and no wave.
+- **How the clients learn the class change.** A changed state goes out in the unit's per-client update after that
+  update's mode message (93847 `0x59d527` calls the state sender `0x539880`, which jumps to the changed-state sender
+  `0x53a210`): `0xa9` for a cleared state, `0xa8 {type, size, u16 state, u32 guid, stat bits ending 0xffff}` for a
+  state whose list holds stats, else `0xa7 {type, u16 state, u32 guid}`. State 142 goes out as `0xa8` with stat 355 =
+  559. A client that gets the unit later gets its states right after `0xac` (93847 `0x538690` calls the state-list
+  sender at `0x538da5`), and that `0xac` carries the current class.
+- State 146 never reaches a client: BaalToStairs frees him in the same think (93847 `0x5c764b..0x5c769c`), so the
+  clients get only his removal (`0x0a`).
+- The class change keeps the unit's guid; the new class's skills and moves replace the throne's, and the monster
+  re-init refills his stats for 559.
+- In our server reimplementation notes (not measured in the real game) the class change came 252 frames after the
+  fifth wave's last death, and Baal left 43 frames after the class change, the same on Normal and Hell (aip1 4 and
+  velocity 6 on every difficulty; portal 563 has FrameCnt1 50 on all three).
+
+### Baal in the chamber: tentacles, cold missiles, the clone
+
+Read in 93847 next to 1.14d; **static only**. Draws are on Baal's seed.
+
+- **Tentacles** (case 9: Festering Appendages, skill 315, in S2; srvdo 140, 1.14d `0x5d2c20`): the count is 2 +
+  difficulty + R%3; the class is baaltentacle1 (562) walked R%2 + difficulty steps down monstats NextInClass (Normal 562
+  or 563, Hell 564 or 565; 1.14d `0x54da60`); two more R%24 draws pick a spot the do never uses; then, per tentacle, x
+  and y each R%18 - 9 about the target (Baal with none). Each spot takes the room found from Baal's (1.14d `0x463740`);
+  no room makes nothing but spends the draws. A tentacle rises in A1 with no experience and no treasure, Baal as its
+  stored owner, and its first think 15 frames on (RestartAiThink, 1.14d `0x5de0f0`).
+- **Tentacle think** (row 139): life span R%aip3 + aip3 seconds, set on the first think; it kills itself with no
+  killer once the span is past or Baal is dead or gone.
+- **A dead tentacle** (D2R only): 93847 `0x5c6eb0` has a branch 1.14d lacks: a tentacle that is itself dead loses its
+  think timers and is taken off the map. A monster's death already drops its think timers (93847 `0x542ba0` from
+  `0x448a30`), so a queued think never reaches it; the death mode's end in the mode table (`0x1d1a200`, row 0) is a
+  protected thunk that could not be read, so who runs this branch is open. With Baal dead the owner check comes first
+  and the corpse stays.
+- **Cold missiles** (case 13: skill 318 in A1; srvdo 139, 93847 `0x585440`): see
+  [skills-missiles.md](skills-missiles.md) section 10. The trails fan out at right angles to both sides of the maker's
+  line.
+- **The clone** (case 15; 1.14d `0x5fc860`), only with every minion of his down (DT or DD) and no living stored
+  owner:
+  1. the spawn parameters for class 570 run first and draw a spot of their own (x, then y, R%24 - 12 each), which is
+     thrown away;
+  2. the clone's spot: x, then y, R%24 - 12 each, about his path target, else himself;
+  3. class 570 is made in Neutral at that spot alone (no ring search); no room or no unit: nothing else happens;
+  4. the clone gets no experience and no treasure, its first think in 15 frames, Baal as leader and owner (and the lead
+     bit itself), max life and life a third of Baal's (rounded down), hpregen 0;
+  5. each becomes the other's stored owner, so he makes no second clone while it lives; he laughs (`0x11`).
+  Uber Baal (709, base baalcrab) runs the same case and makes the same clone.
+- The shared alt (`0x5a8f00`) keeps the home command across a special state's setup and ends the inferno state (12).
+
 ### Mephisto, the Council, Nihlathak, the Ancients
 
 - **Mephisto** scans the adjacent rooms himself (hostile, attackable, living units within 32) and keeps the unit with
@@ -644,6 +709,36 @@ A mod that changes class 559's speed, the portal's place or the throne room's co
   walks toward his target only from aip1 away and idles 10 when closer (classic walked with a negative step count); his
   shout needs skill slot 0 set; Talic's whirlwind is a direct mode change. The statues (row 132) act only once the
   quest code says the rite may start.
+
+More detail on the same bosses (**static only**):
+
+- **Mephisto in 1.14d** reads aip2 and aip3 too: `0x5f77c0` (1.14d) rolls under aip2 for the weakest unit its scan
+  (`0x5f7700`, squared distance 1024) found, then under aip3 for the closest player. In 1.14d the second roll never
+  comes, because the scan tests Mephisto's own type for "player". Both builds read the two parameters; only D2R can
+  aim at the closest player.
+- **Nihlathak's quest call** (`0x548e90`, 1.14d `0x58bc40`, made on every think right after the AI control is read):
+  in a game whose founder had not done Betrayal, and while the quest's last status is below 3, it clears the packet
+  flags and cycles status 3. Each player who has neither G nor B, or has D or N, gets `0x5d {34, 0, display status}`;
+  a player who still has the quest open sees 3. In practice it sends once, on his first think.
+- **Nihlathak's corpse walk** (`0x437b50`, unit find flags 0x1002, find walk `0x3b2570`): when the box of 10 around
+  the target lies strictly inside the target's room (`0x2efb40`) only that room is walked, else every room of its near
+  list (`0x2efde0`, the room itself among them) in list order; within a room the unit list runs newest first. The
+  search refuses only a missing caster or target or a skill level of 0 or less. His slot-2 skill in vanilla is
+  NihlathakCorpseExplosion (351: srvst 17, srvdo 55).
+- **The Ancients' score**, the two terms the table above leaves out:
+  - arena: 100 when the AI command's point is far from the thinker and near the target; it is added to range inside
+    the 5 x (range + arena) part of the sum. The Ancients pass no command, so it is always 0 for them.
+  - threat bonus (D2RCore; the exe thunk at `0x3e2b4a2`): for a living player in difficulties 0 to 2 only, stat 84 of
+    the player's state-231 list that names the monster's unit id and class, times a share of 100: all of it when the
+    monster's aidist is 0, else p = (aidist - distance) x 100 / aidist (0 past aidist) and share = p x 100 / (295 - 2p),
+    kept within 0 to 100.
+  - each Ancient ignores the score and count the pick returns; Madawc calls the pick at `0x5c6285`, Korlic at
+    `0x5c6065`, Talic at `0x5c6686`.
+- **Helpers the Act V boss thinks share**: the minion scan (scan id 1 with callback `0x5c2700`: friendly living
+  monsters of base class minion1 453 not in state 141; the Overseer's heal target within squared 576 under half life,
+  his whip target within squared 400 and not unique; Nihlathak's whip target within squared 625), the last-attacker
+  filter `0x4a6dc0`, the skill-in-range helper `0x4a7990` (x then y, RL(2 x range) - range each) and the "uses skill"
+  test `0x596ca0`.
 
 ### Calls from a think into quest code
 
