@@ -105,7 +105,7 @@ and the row is not `Sync`. It also drops the footprint when the new mode has no 
 | 47 | `0x5dc000` | Countess chest: registers up to 8 chests with quest 5; after her death fires missile 0x14c at each from a monster 0x146 | medium |
 | 54 | `0x5dbf70` | Cain's town start marker (object 385): records it, spawns town Cain when the quest says so | medium |
 | 61 | `0x5dbf20` | Cain's portal: mode 1, quest event at frame + 25 | medium |
-| 80 | `0x50f510` | D2R addition: classes 0x248-0x24a (the colossal statues) record their id at game +0x1a600/+0x1a604/+0x1a608 and take their mode from game +0x1a618/+0x1a61c/+0x1a620 | static only |
+| 80 | `0x50f510` | D2R addition: classes 0x248-0x24a (the colossal statues) record their id at game +0x1a600/+0x1a604/+0x1a608 and take their mode from game +0x1a618/+0x1a61c/+0x1a620; the altar (OperateFn 74) and the fight are in [endgame-events.md](endgame-events.md) | static only |
 
 The other entries are Acts II-V quest props (altars, orifice, tome stands, sewer, Hell Forge, Hratli, Natalya,
 Diablo's start, the Act V block 62-79); InitFn 10 (`0x50e3d0`) has code but no vanilla row uses it. A **new object row

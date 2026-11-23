@@ -548,7 +548,8 @@ think logs. AI table rows (`{kind, init, think, alt}`):
 | 138 BaalToStairs | 559 | 1 | `0x5c7580` | none |
 | 139 BaalTentacle | 562-566 | 1 | `0x5c6eb0` | none |
 | 141 BaalMinion | 571-573 | 1 | `0x5c7750` | none |
-| 144 / 146 / 147 | Uber Izual / Uber Mephisto / Uber Diablo | 1 | `0x5b60c0` / not noted / `0x5cfce0` | 147: `0x5a8f00` |
+| 144 / 145 / 146 / 147 | Uber Izual / Uber Baal / Uber Mephisto / Uber Diablo | 1 | `0x5b60c0` / `0x5a8fe0` / `0x5b6540` / `0x5cfce0` | 145, 147: `0x5a8f00` |
+| 149-151 / 152-154 | the Uber Ancients 745-747 / their spirits 748-750 | 2 | see [endgame-events.md](endgame-events.md) | none |
 
 No think here branches on the superunique or boss flags; a boss behaves as its class's row says.
 
@@ -699,7 +700,7 @@ must translate its scan ids, command ids, search kind and sound ids.
 - Hurt branches of the Act I AIs were read but not seen live (the test scenes kept monsters at full life). No boss
   think of section 11 was replayed against live logs. The owned hireling's Combat and skill choice were not captured.
 - Baal's target score and the D2RCore threat bonus (state 231): who adds that state.
-- The Ancient statue's spawner class (control +0x80), Talic's whirlwind mode-change byte, Uber Mephisto's think address.
+- The Ancient statue's spawner class (control +0x80), Talic's whirlwind mode-change byte.
 - Weapon class of monsters with several (it picks the animdata record), sequence (monseq) frame counts, and the
   per-mode animation speed branches: these decide the frame of the next think.
 - The D2RCore aura path behind its own flag (likely Terror Zones), and what `0x4ff3b0` returns for a pet's owner.
