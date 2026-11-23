@@ -29,7 +29,7 @@ every field; **observed** = seen in captures; **static only** = read in code, no
 | Quest TC | replaces the base TC when the monster has `TCQuestId` (`+0xf0`) and a quest TC (`+0xc6`), there is a killer (a non-player killer is replaced by its owner, `0x4a53c0`), it is a player, and its quest word for that difficulty (player data `+0x40 + 8 * difficulty`) has none of bits 15, 1, 0 or `TCQuestCP` (`+0xf1`) | high |
 | Level upgrade (`0x441300` -> `0x397290`) | uses the monster's stat 12 only for an expansion monster in Nightmare/Hell that is neither `noRatio` nor `boss`, or a desecrated one; else no upgrade. Type flags `0x600` add a terror-zone bonus (`0x542ea0`) | high |
 | Drop level (`0x43e8a0`) | `max(1, stat 12)` for a monster; used for the quality roll and every item | high |
-| Difficulty context (`0x48ff40`) | game difficulty `+0x104`, ladder byte `+0x101`, bank `+0x106`, `+0x108`; a terror-zone monster (`0x5439c0(unit, 4)`) can override | static only |
+| Difficulty context (`0x48ff40`) | game difficulty `+0x104`, host game type `+0x101` (0 Battle.net host, 1 open, 2 TCP/IP, 3 single player; see [cube.md](cube.md#ladder-rows)), bank `+0x106`, ladder byte `+0x108`; a terror-zone monster (`0x5439c0(unit, 4)`) can override | static only |
 
 Act I: Andariel (class 156) is the only quest-TC monster (`Andarielq`, which is also her normal TC in 93847). Her
 gems come from her quest kill handler (`0x5e1f00`), not the TC. Blood Raven (`0x5de890`) and the Countess (`0x5e10c0`
@@ -82,6 +82,26 @@ Gold: `ilvl + rand(ilvl * 5)` on the item's unit seed, then `mul=` and gold find
 | Corpse on a blocked cell | D2RCore's search then differs from `0x364e90` (positions only; items and seeds still match) | observed |
 
 The same search places gold piles at spawn ([monsters-spawn.md](monsters-spawn.md)).
+
+**A player's drop and gold piles** (static only):
+
+| Path | Spot | No free cell |
+|-|-|-|
+| Item drop (0x17, 0x5c, a belt item to the ground, death's ground items): `0x43de10` | start (x + 2, y + 3) when a room holds it, else the player's cell; then `0x364e90`, size 1 (3 with game `+0x124`), masks `0x3e01` / `0x801`, fall-back flag 1 | the start is used |
+| Search finds nothing at all | | D2R frees the item (`0x43ec10`): it is lost |
+| Gold pile: `0x43f930` (callers `0x424d90` purse drop, `0x43f8e0` pick-up rest, `0x42c110` corpse, `0x43c6f0` sale above the cap) | the same start and search with fall-back flag **0** | no pile is made |
+
+With no gold spot: a dropped pile (0x47) stays carried (`0x424d90` subtracts only what it laid); the rest of a pick-up
+above the carry cap is lost; at death the penalty after a monster kill and the corpse's gold are lost, a player
+killer's share stays carried. A dropped item with filled sockets reaches the room as 0x9c 0 (ADDTOGROUND) followed by
+one 0x9d 0x12 per socket child.
+
+**Pick-up sounds and refusals.** A gold pick-up plays sound `0x65` + the pile's size class (`0x370c90`: below 100,
+500, 5000, more) and sends no item message. Gold above the carry cap goes back to the ground as a new pile through the
+gold search (`0x475c90` -> `0x43f8e0`) with sound `0x18`, whether or not a pile was made. An item pick-up with no
+room or a refused placement (`0x471950`) is put back **in its original room at its original coordinates**
+(`0x43dd00`, saved by `0x34a110` / `0x34b440` before the item was detached): no drop-spot search, 0x9c 2 to the room's
+watchers, sound `0x18`. 1.14d's `SERVER_PickToInventory` (`0x563560`) also left it in place.
 
 **Drop at a unit** (quest objects, `D2GAME_DropItemAtUnit` pattern): the spot comes first, unit position + (2, 3);
 with no spot nothing is made and no seed is drawn. Item level = the area's monster level (1 when unset), two
@@ -167,6 +187,42 @@ bank gold (C->S `0x27`, `0x4ba580`) standing next to it, and one who walked away
 stash gold as stat 15 (`0x1d`-`0x1f`); the carried gold goes out with the vitals pass. Opening the stash is in
 [objects.md](objects.md) section 4.8.
 
+**C->S 0x27 layout** (`0x4ba580`, 17 bytes; static only): +1 the bank unit (the player, or one of its shared-stash tab
+bodies), +5 the bank's stat 15 and +9 the player's stat 14 **as the client sees them** (either one stale refuses the
+request), +13 the amount as u32 v. High bit set: a deposit of `~v + 1` (the field is the negative amount); clear: a
+withdrawal of `v + 1` (the handler adds the one). A magnitude of 2^31 is refused. A move past either cap (carried
+`10000 x level`, `0x34b320`; stash 2,500,000, `0x34b310`) is refused whole and only logged; 1.14d's stash buttons
+filled up to the cap instead. [network-messages.md](network-messages.md) gives the direction the other way round
+(positive in) with low confidence; this reading is from the handler.
+
+**Gold in a shared-stash tab.** The same `0x27` with a tab body as the bank: the body must be one of the player's tabs,
+with the stash in reach (`0x4f6130`, the same test as the item requests below). Each tab holds its own stat 15, capped
+at 2,500,000 by the same `0x34b310` (`0x34b2f0`, tabs x 2,500,000, has no callers). An accepted move sends the tab's
+new stat 15 to the owner as a 0x20 on the tab body (`0x47dfd0`). The kind 1 (materials) tab's gold is not restored
+by the loader (`0x52fdb0`), so gold moved into it would not survive a save. Static only.
+
+**Shared-stash item requests** (the opcode-to-handler pairing comes from the CCMD name list at `0x1d9a5c8` and is
+likely, not proven):
+
+| Request | Handler | Bytes | Fields |
+|-|-|-|-|
+| `0x14` swap cursor item with a tab item | `0x4b4de0` | 21 | +1 cursor item, +5 tab item, +9 tab body, +0xd tab item x, y (u16 each), +0x11 the cursor item's new x, y |
+| `0x45` cursor item into a tab | `0x4c5570` | 13 | +1 item, +5 tab body, +9 x, y |
+| `0x46` tab item to the empty cursor | `0x4c6480` | 13 | as 0x45 |
+| `0x55` between the inventory or personal stash and a tab | `0x4c7690` | 29 | +1 item, +5 tab body, +9 from grid, +0xd from x, y, +0x11 to grid, +0x15 to x, y, +0x19 direction (0 player to stash) |
+
+Tab bodies are player-type units in state `0xba` owned by the player (made by `0x52f8d0`); a refusal only logs and
+sends nothing. The **0x14 swap** checks, in order: the body test; the player's link record for the body
+(`0x388e10`) has flag A clear (`0x38cd60`) and is usable (`0x38cd50`); both items exist and have a size
+(`0x371850`); the new cell overlaps the tab item's rectangle (new x below tab x + its width, and tab x at most new x +
+the cursor item's width, the second test not strict, so touching edges pass; the same for y); then the tab item leaves
+its cell, the cursor item leaves the cursor, the cursor item is placed at the new cell, the tab item goes to the
+cursor, each failure putting the earlier steps back. Replies: 0x42, then the item sender `0x535f60` for the tab item
+twice (old cell, then cursor; the first names the **player** as owner) and once for the cursor item at its new cell
+owned by the tab body. The materials tab (state `0xd1`) is not refused by any of these, but its counted stacks are not
+in its grid, so a swap cannot find them. `0x473210` refuses every tab body when game `+0x106` is 1, which is the
+classic data bank (section 8), so classic games likely have no shared stash. Static only.
+
 ## 7. Inventory requests (C->S, controller paths included)
 
 | Id | Move | Rule | Confidence |
@@ -201,6 +257,9 @@ columns are health, mana, rejuvenation, town portal. A used-up potion's record g
 | gamble.txt order | sorted by item level with the CRT `qsort`, so equal levels keep that algorithm's order; `gambleLimit[level]` counts usable entries | high |
 | Gamble buy | the item is identified; a ring or amulet is replaced from the same code, anything else by a random entry sharing a normal/exceptional/elite code, at an item level no lower than that entry's | static only |
 | Magic stock allowed | item record `+0xe4` bit 0 (`0x3742f0`) | static only |
+| Gamble in a classic game | the fill reads the data bank game `+0x106` (1 classic, 2 expansion, 3 current expansion). With 1: `0x541880` skips a drawn entry whose item row has `version` >= 100 without using up the slot (offers 0 and 1 stay ring and amulet); `0x541ab0` makes no exceptional or elite upgrade; the quality draw is unchanged | static only |
+| Gamble replacement in a classic game | the family search `0x53ae50` does not filter by version, so the replacement after a buy can be an expansion entry sharing a code with the bought item | static only |
+| Item format | game `+0x128`, set at create (`0x405093`): 2 when the edition is 1, else 101; stamped on every new item (`0x375860`, item data `+0x40`). A classic gamble item is format 2 (saved as version 4, expansion bit clear), never 0. A format-0 item (`0x3730d0`) would take its normal form's `gamble cost` as is, with no level scaling and no stat 87 | static only |
 
 **Restock.** The game keeps a store list at `game+0x3838` (count `+0x3840`, entries 0x78 bytes): filled `+0x34`,
 mark `+0x35`, 64-bit stamp `+0x38` (clock `0x120d720`, ms). Subscribe (`0x540850`) fills an unfilled store for the
@@ -237,14 +296,53 @@ Extra rules (high unless noted):
   durability stats nonzero, not indestructible stat 152). Unlike 1.14d the identified test is not here, so
   unidentified stock is made whole but has repair price 0.
 
-Each handler answers 0x2a `{0, result, guid, carried gold}` (static only):
+Each handler answers 0x2a `{type, result, guid, carried gold}` (static only). **Type**: a successful buy or gamble 5
+(`0x53d850`; 1.14d `SUNITNPC_BuyItem` `0x577830` used 4), a sale 3, a repair 1 (the same as 1.14d); every refusal
+type 0.
 
 | Handler | Refusal -> result | Success |
 |-|-|-|
-| buy `0x53d850` | id not in this NPC's store (or this player's gamble grid), or quote != price or 0 -> 7; gold + stash too low or negative -> 12; no backpack room -> 10 | 0: pay (carried gold first, then stash, `0x5416d0`), item to backpack |
-| sell `0x53f1a0` | the player holds no item of that id -> 11 (1.14d `AlreadyHoldingItem`; the store sees the grid, the body and the cursor, so a belt, cube or stash item counts as not held); held but not on the grid or the cursor (equipped), or a quest item (flag `0x1000`, `quest` column, type `ques`) -> 9; the message's location kind is not where the item is (0 backpack grid, 4 cursor; 1.14d `SUNITNPC_SellItem` compares the item's mode) -> 9; quote != sell price or 0 -> 9 | 1: credit at most `level * 10000 - carried` (the rest is lost) |
+| buy `0x53d850` | id not in this NPC's store (or this player's gamble grid), or quote != price or 0 -> 7; a full-stack fill that is not allowed (below) -> 9; gold + stash too low or negative -> 12 (checked once, up front); a fill whose first item would not go to the belt -> 9; no belt or backpack room -> 10 | 0: pay (carried gold first, then stash, `0x5416d0`), item to the belt (beltable type, free box) or the backpack. A permanent item stays listed and the player gets a copy under a new id (`0x43d660`); the 0x2a carries the **store** item's id even then, once per request |
+| sell `0x53f1a0` | see the note below the table on 9 vs 11; a quest item (flag `0x1000`, `quest` column, type `ques`), or an item on a body slot outside 1..10 (the swap pair) -> 9; the message's location is not the item's -> 9 (kind 0: its top-left backpack cell in locX/locY; kind 1: its body slot 1..10 in locX, locY 0; kind 4: the cursor, both 0; any other kind refused); quote != sell price or 0 -> 9; an equipped belt whose potions would sit above the capacity left without it -> 9 (1.14d moved them out) | 1: the price paid (`0x43c6f0`): up to the carry cap into carried gold, the rest **dropped as gold piles at the player's feet** (`0x43f930`; lost only when no spot is found) |
 | repair `0x53fe00`, all (item -1) | quote != sum of body repair prices -> 9; too little gold -> 12 | 2 |
 | repair, one item | quote 0 -> 12; not the player's, not repairable, nothing to repair -> 9 | 2; a partial repair when quote = carried gold, the item is not broken and gold > 0 |
+
+Sale differences from what this page said before, from a later reading of `0x53f1a0` (both static only):
+an item id that does not resolve in the game at all (`0x48fe80`) answers 9, and 11 is the 1.14d result when the id
+resolves but `AlreadyHoldingItem` fails; an equipped item on body slots 1-10 **can** be sold with location kind 1
+(the earlier reading allowed only grid and cursor); and the part of the price above the carry cap is dropped as piles,
+not lost. A negative carried balance after a payment is set to 0 by 93847.
+
+**Full-stack buy** (shift + right click; static only). Bit 1 of C->S 0x32's flags byte (@23, sender `0x4c4650`; bit 0
+is the gamble flag) asks for a fill. In `0x53d850`, after the quote check:
+
+1. A fill is refused (9) in gamble mode, with the gamble bit, for an item whose misc row has no `multibuy`, and for one
+   that is not permanent at this NPC (`0x38c7d0`: one of its `PermStoreItem` rows, or `hp4 hp5 mp4 mp5` outside
+   Normal). Then the gold check (12) on the price of one.
+2. A scroll (type `scro` or a child) with a backpack tome of the same `pSpell` that is not full (`0x387d00`) goes into
+   the tome: one for a plain buy, as many as gold + stash pays for (up to the tome's room) for a fill; sent as a
+   stat update (`0x46f090`). The 0x2a carries the tome's id.
+3. A fill of an `AutoStack` type with a matching backpack stack that is not full (`0x386e00`; same row, quality 1..3,
+   same graphic, ethereal flag, no sockets, same damage stats) tops that stack up at the price of one each. The 0x2a
+   carries the stack's id.
+4. Anything else is placed by `0x46ded0` (belt, else backpack). A fill whose first item does not land in the belt is
+   refused (9), and so is a key fill with no held key stack: 1.14d turned both into a plain buy of one. A fill buys
+   again while the next copy also goes into the belt and the gold lasts; running out of gold midway just ends the loop
+   and still answers 0. An `autobelt` item takes a column whose bottom holds the same item, else the first free bottom
+   box; any other beltable item (scrolls `isc` / `tsc`) only joins a column already holding it (`0x38a140`), so a
+   scroll fill works only then. 1.14d `0x63c560` refused `isc` and `tsc` outright.
+
+The maximum stack is `maxstack` + stat 254, capped at 511 (`0x3719e0`). The destination the client names (@17, @19,
+@22) is compared with this placement (10 when they differ).
+
+**Reply order.** A buy or gamble sends the item messages first (`0x535f60` placement, or `0x47a190` / `0x46f090`
+for a quantity update), then the type-5 0x2a; a gamble item goes out unidentified and then identified (`0x46e8c0`),
+both with item flag 1, before the replacement listing; the refresh and identify sound follow the 0x2a. A repair
+sends its item updates (`0x53bb50` for a full repair, through `0x5413f0` per item for repair-all; `0x43eb30` for a
+partial repair's durability) **before** the 0x2a, as 1.14d `0x578050` did. A sale is the other way round: 0x2a first,
+with the gold from before the credit (`0x480750`, sent at once), then the item's leave, then the piles, the relisting
+and the gold stat (1.14d `0x579510` removed the item first). In the 0x33, @13 / @15 / @21 are where the client expects
+the resale to land, @17 / @19 the item's own cell.
 
 Partial repair: `ratio = ((u64)price << 10) / (max - cur)` (classic did this in u32 and wrapped past 2^22);
 `points = (carried << 10) / ratio`; when nonzero all carried gold is paid and durability becomes
@@ -253,9 +351,10 @@ Partial repair: `ratio = ((u64)price << 10) / (max - cur)` (classic did this in 
 **What a sale relists** (`0x38c8d0`): the sold unit itself, same id, via 0x9c 0x0b on this NPC's store page;
 identified, full durability and quantity. Destroyed instead: Cracked low quality; broken, personalized or ethereal;
 type `play`; filled sockets; a `carry1` unique; outside Normal `hp4 hp5 mp4 mp5`; this NPC's permanent store item;
-no room. The seller gets the item's leave first (0x22 for a scroll or tome, then 0x9d 5 with item flag `0x20`, or
-0x42 for a cursor item; then 0x47/0x48), then 0x2a, then the 0x9c 0x0b and the gold (1.14d D2GAME_STORES_SellItem
-`0x579510`; the order after 0x2a is inferred). Without flag `0x20` the client takes 0x9d 5 for a pick-up and keeps the
+no room. The seller gets the item's leave (0x22 for a scroll or tome, then 0x9d 5 from the grid or 0x9d 8 from a body
+slot, both with item flag `0x20`, or 0x42 for a cursor item; then 0x47/0x48), the 0x2a, then the 0x9c 0x0b and the
+gold. 1.14d D2GAME_STORES_SellItem `0x579510` sends the leave before the 0x2a; 93847's `0x53f1a0` sends the 0x2a
+first ("Reply order" above). Both static only; a capture would settle it. Without flag `0x20` the client takes 0x9d 5 for a pick-up and keeps the
 sold item on its cursor (observed). Buy, sale and identify each force a save when they go through
 ([saves.md](saves.md#when-the-game-writes-a-save)). The handler also checks the client's page and cell against
 the spot `0x38c8d0` picks (static only).
@@ -269,9 +368,22 @@ to max with the stat 75 percent (`0x2f4b60`). A broken item goes through `0x46e7
 into use (`0x475090`, `0x470ca0`), then 0x7d `{owner type, owner guid, item guid, 0x200, 1}` to the owner and to
 viewers when worn, then 0x47/0x48. No 0x9d 0x14 for a repair (static only).
 
+**Charges on runewords and affixes.** A charged skill's stat 204 can sit in several stat lists of one item (its base
+and affix list, a runeword's list). The price reads one packed count per layer from the full stat list (Core
+`0x833ee0` -> `0x3dfa00`), and the refill sends one 0x3e per spent layer in that list's order (Core `0x834290` ->
+`0x3df5e0`, from `0x46f310`; 1.14d `0x55fe80` -> `0x65c940`), each in the list it came from. The native setter
+(Core `0x3decb0`) stops at the **first** list holding that layer, so a reimplementation that refills only one list
+can quote the same spent charges again on the next repair. Static only.
+
 **Identify** (`0x46e8c0`): sets flag `0x10`, clears no-equip `0x4000`, the sender sends 0x9d 0x14, the unit is
 flagged for refresh, sound 6 (`0x491960`). The sender clears the transient item flags `0x2e9` on each item it sends,
 then sets the one it was given (1 identify, `0x200` repaired). Cain's identify-all (`0x53c2b0`) takes only stored
 items (mode 0) on page 0, and page 3 when the message's cube id is the player's cube (-1 without one); body, belt
 and stash items are left alone. Count `0x385f10` / `0x386160` (with cube), 100 gold each. A set or unique with the
 drop-tracker flag is registered at identify (`0x424970` / `0x4247d0`).
+
+**Cain's message order.** `0x53c2b0` runs `0x46e8c0` on one item at a time, so per item: its 0x9d 0x14, a 0x9d 0x12
+for each socketed child right after it, then that item's Chronicle 0x87s (Cain passes the broadcast flag, so every
+player in the game is told), before the next item. The unit's own updates are queued: one 0x47/0x48 pair and then one
+sound 6 per item leave after the last item. The 0x2a answers 3 done, 9 invalid, 12 not enough gold, with guid -1.
+Static only.
