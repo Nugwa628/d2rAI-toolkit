@@ -27,8 +27,11 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [skills-missiles.md](skills-missiles.md) | Skill start/do and per-slot behaviour (RVAs, seed draws, D2R changes), monster per-attack stat draws, the missile hit handler, timed states and curses, mercenary AI, stats and item giving |
 | [monster-ai.md](monster-ai.md) | The AI tick and target search, think timing, what each common AI does with its aip values, AI commands, act boss mechanics, differences from classic, hirelings and summons, unique-mod start handlers at monster init, the 0xac message, player corpses |
 | [monster-ai-routines.md](monster-ai-routines.md) | Per-AI reference: what every monster AI routine does and what each aip value means |
+| [cube.md](cube.md) | The Horadric Cube: the transmute request, recipe matching (gates, ladder rows, item order, op 28), output rules (durability, sockets, rep/rch/mod), the Cow Portal and the D2R-only Red Portal |
 | [objects.md](objects.md) | World objects: populate/init/operate tables, PreOperate and mode jitter, chests and their TC level, traps, shrines, wells, doors, portal pairs, object messages |
 | [quests-acts.md](quests-acts.md) | Quests across the five acts: quest records and flags, the shared quest machinery (status, syncs, sequence filters, intro rule), per-quest triggers and messages, Tyrael's trip and the end of game |
+| [endgame-events.md](endgame-events.md) | Pandemonium and Uber Tristram (keys, cube portals, mini levels, organs, the Ubers' thinks, Hellfire Torch, Standard of Heroes) and the Uber Ancients at the Colossal Summit |
+| [trade-party.md](trade-party.md) | Player to player: the trade window and its messages, trade rules, hostility through mercs and summons, death lines and ears, partied deaths, corpses looted by others, party sharing for 1 to 8 players |
 | [hirelings.md](hirelings.md) | Mercenaries outside combat: the hireling row, hire list and quote, hire and resurrect, death and the owner's death or leave, items, save and load, messages |
 | [movement-modes.md](movement-modes.md) | Collision bits and move masks, path finders and the step, line of sight, speed, unit modes, animation timing and breakpoints, the event queue, mode and walk messages |
 | [units-stats.md](units-stats.md) | Units, stat lists, states and party records: unit header, allocation and ids, seed draw order, stat list flags, state bits, relation and party rules, server timing |
@@ -36,7 +39,7 @@ rules) is covered in [porting-classic-mods.md](porting-classic-mods.md).
 | [d2r-93847-addresses.md](d2r-93847-addresses.md) | Address registry for build 93847: functions, tables, record and unit offsets, entry bytes |
 | [debugging.md](debugging.md) | Symptom -> cause -> fix table from real bugs, and where every log lives |
 | [crash-triage.md](crash-triage.md) | From a player's crash report to a fix: RVA from RIP, stack return addresses, Ghidra, which logs to ask for, a worked example |
-| [d2rloader.md](d2rloader.md) | D2RLoader facts and traps: default mod, the cache-building first start, other plugins, version checks, its files |
+| [d2rloader.md](d2rloader.md) | D2RLoader facts and traps: default mod, the cache-building first start, other plugins, version checks, its files; inside 1.3.1: the embedded game image, start sequence, the `0xd0` plugin channel, D2RCore's exports, plugin loading |
 | [porting-classic-mods.md](porting-classic-mods.md) | Porting a classic 1.13c-era mod: inventory, table-by-table conversion, ids that must not move, function numbers, events, art order |
 | [plugin-techniques.md](plugin-techniques.md) | Plugin feature recipes: belt refill, buff HUD from tables and the 25 fps clock, weapon swap, waypoint UI from actinfo, running many clients (shared Settings.json, RAM), plugins under Wine / Proton (syscall stubs, loader lock, missing fonts), sprite-card facing (clip per facing under the weapon-class keys) |
 | [sdk-gaps.md](sdk-gaps.md) | For the D2RLoader SDK author: every place plugins still hook or patch the game (build 93847 RVAs), what breaks, and the SDK service that would replace each patch, by priority (checked against PluginSDK 0.4.0) |
