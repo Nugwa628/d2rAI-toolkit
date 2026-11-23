@@ -6,7 +6,8 @@ is an RVA for **build 93847 only** (image base `0x140000000`) and must be re-che
 ([engine-re.md](engine-re.md)). Behaviour and parameter meanings come from a community unit AI compendium that was
 re-derived from the 3.3 server code, cross-checked against our own disassembly notes. Each AI carries a confidence
 mark that says how far the two agree. The player summons of rows 101 to 112 and the rows from 143 on are not here:
-see [monster-ai.md](monster-ai.md) section 6 and [monsters-spawn.md](monsters-spawn.md) section 6.
+see [monster-ai.md](monster-ai.md) section 6 and [monsters-spawn.md](monsters-spawn.md) section 6; the Uber rows
+(144-147, 149-154) are in [endgame-events.md](endgame-events.md).
 
 Related: the tick, target search, movement tactics and AI commands in [monster-ai.md](monster-ai.md); the AI table,
 the aip layout and the AI columns in [monsters-spawn.md](monsters-spawn.md); mercenaries in
