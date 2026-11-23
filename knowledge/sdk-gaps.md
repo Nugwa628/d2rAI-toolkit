@@ -13,7 +13,7 @@ Engine detail is not repeated here; the links point to the toolkit file that has
 |-|-|
 | Plugin SDK headers | **0.4.0** (plugin ABI 4), upstream `D2RLoader/PluginSDK` at commit `03a5af9` (2026-10-14, "Add getWidgetScreenRect") |
 | SDK the plugins were built with | 0.3.0 (ABI 4). 0.4.0 adds `WidgetService` text / tooltip / sprite / rect / dropdown / toggle / slider calls and `getWidgetScreenRect`, `InputService` key listeners, `ItemService.getItemDetails` / `getItemTooltip` / `getItemPreviewTooltip` |
-| D2RLoader / D2RCore | 1.3.1, D2RCore timestamp `0x6ab37824`; its export table (764 exports, private ordinals 1000-1373) was read for names only |
+| D2RLoader / D2RCore | 1.3.1, D2RCore timestamp `0x6ab37824`; its export table (764 exports, private ordinals 1000-1373) was read for names only. A later full read counts 763 live exports in 2281 ordinal slots; the groups are in [d2rloader.md](d2rloader.md#d2rcores-exports) |
 | Game image | D2R 3.3 build 93847, PE timestamp `0x6ab3782c`. Every RVA below is for this image only ([d2r-93847-addresses.md](d2r-93847-addresses.md)) |
 
 Sources, without names: two overhaul-mod ports built as D2RLoader plugins (a large one and a second, smaller one), the
@@ -319,8 +319,10 @@ Totals: 75 gaps, 14 P1, 42 P2, 19 P3. SDK status: 38 none, 36 partial, 1 covered
 
 - **Need**: start per-player clocks, refuse a join, clean up when a joined player leaves.
 - **Why the SDK can't**: `NetworkService` reports the plugin channel's connection states, not the game's players; no
-  event fires when a joined player leaves.
-- **Workaround today**: walk the game's client list from the frame hook and diff it.
+  event fires when a joined player leaves. (The channel's own wire format and limits:
+  [d2rloader.md](d2rloader.md#the-plugin-channel-in-the-game-stream-0xd0).)
+- **Workaround today**: walk the game's client list from the frame hook and diff it (`game+0x138`, `client+0x628`,
+  checked live: [d2rloader.md](d2rloader.md#offsets-checked-live)).
 - **Service**: `PlayerJoined` (decision point: may refuse with a reason) and `PlayerLeft` events, game thread, host.
 - **Priority**: P2. **Confidence**: observed.
 
@@ -914,7 +916,9 @@ Totals: 75 gaps, 14 P1, 42 P2, 19 P3. SDK status: 38 none, 36 partial, 1 covered
 - **Workaround today** (written against 0.3.0): the buff HUD calls `FindTopLevelPanel` `0x846170`,
   `FindChildWidgetByName` `0x856220`, writes button frames at `+0x7e8` / `+0x7ec` and calls the frame setter `0x859700`
   and refresh `0x870460`; it overwrites text and tooltip buffers in place (`+0x88`). Another port subclassed the game
-  window to get click positions for its menus.
+  window to get click positions for its menus. `0x846170` takes only the name: it loads the UI root itself and jumps
+  to `0x89f760(root, name)`, so a call as `(root, name)` returns null (checked live on 93847,
+  [d2rloader.md](d2rloader.md#offsets-checked-live)).
 - **Service**: `setImageFrame(widget, sprite, frame)` and a `skillIcon(skill)` query; stash widgets reachable by name.
 - **Priority**: P2. **Confidence**: checked (the raw writes); static only (whether 0.4.0 removes each one).
 
