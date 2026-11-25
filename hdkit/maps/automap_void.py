@@ -16,6 +16,15 @@ further from their floor (thick front walls 4-5 cells out) needs a wider reach: 
   python -m hdkit.maps automap-void build MOD_DATA --plan PLAN [--map MAP ...] [--reach-map MAP=N ...]
       rewrite the .ds1 of the plan's maps that the mod ships (automap_rows' automap_plan.json; D2R's own maps are never
       touched) and the tile sets in MOD_DATA. Only walls whose key got a new row in the plan move.
+
+WARNING, legacy-graphics crash: in the overhaul port this tool comes from, a release candidate with this step crashed the
+game in legacy graphics after several of the mod's areas in one session (BC_ASSERT n < m_size, n 29423, m_size 2048,
+then an access violation in D2RCore): 8 of 8 full tours of the mod's areas crashed with the step, 0 with only the tile
+files it writes put back to the previous release's. The automap rows, the bright legacy cels and the HD map art were
+ruled out. The exact cause is not pinned down; the suspects are the tile copies themselves (one map got 66) and a
+stock D2R tile set that this step copies into the mod to append to (the port's act1/monastry/facade.dt1). The port
+shipped without this step and has not put it back: leave it out of your build and accept a few minimap lines that run
+into the black. If you use it anyway, run a long legacy-graphics tour over every map it edits before you release.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-# Plugin techniques: belt refill, buff HUD, weapon swap, waypoint UI, many clients, Wine, sprite-card facing
+# Plugin techniques: belt refill, buff HUD, weapon swap, waypoint UI, many clients, Wine, sprite-card facing, overlay cost, keys with a message line
 
 How to build common quality-of-life plugin features on D2R 3.3 build 93847 with D2RLoader 1.3.1 (PluginSDK 0.3.0)
 without fighting the engine. Techniques only; the hooks and offsets they use are in
@@ -164,3 +164,62 @@ the unit position read (fires on several threads, and turns still had to wait fo
 path direction (0-63), facing key and position lets a game check shoot each facing on purpose (put the character where
 the spawned unit faces the key you want) and label every frame. The in-game sign-off (`python -m hdkit.signoff`,
 [hd-viewer.md](hd-viewer.md#the-in-game-sign-off)) relies on it.
+
+## 8. Overlay windows: cost per frame
+
+A plugin that draws in **its own transparent (layered) window** over the game can cost more than everything else the
+mod does. Found in a bundled third-party enemy health bars plugin (lanes fpstown and rel0130 of the port, D2R 3.3 build
+93847 under Proton):
+
+- **What was slow.** Its renderer sent the whole window (the game's size: 33 MB a frame at 3840x2160) through
+  `UpdateLayeredWindow` on every pass, also with no bar on screen and with the bars turned off. Under Wine / X11 at 4K
+  the game ran at about 36 FPS in town with the plugin and 85 without it. At 1600x900 it added 9 to 13 ms of game CPU
+  per frame (town 42.1 -> 27.0 ms after the fix, 29.4 with no plugin; a fight 35.4 -> 22.4; legacy 21.2 -> 12.6).
+  Only measured under Wine; Windows was not measured.
+- **The fix** (a patch to the plugin):
+  - make the window only when the first bar is drawn;
+  - with no bar on screen, hide it and send nothing;
+  - while bars show, send only the changed area: `UpdateLayeredWindowIndirect` with `prcDirty` set to last pass's bars
+    plus this pass's;
+  - a window that was hidden gets one whole send before it shows again, so no old bar can stay behind;
+  - with the feature off (config or console), send nothing and ask the game for no data either;
+  - log the first few shows and hides with the number of sends, so a log proves the idle path.
+- **Test it without Windows.** The send decision lives in a header with no Windows calls, unit-tested with a simulated
+  window that must always hold exactly the current bars (no ghost, no missing bar).
+- **Result:** the patched plugin costs the same as no plugin, and draws as before in HD and legacy.
+
+Lesson: when FPS drops, measure with each plugin off in turn, and measure a plugin's cost while it shows nothing and
+while it is switched off. An overlay must cost nothing when idle. The port's other bundled overlay (floating damage
+numbers) draws with ImGui into the game's own frame through a Present hook and needs no second window; D2RLoader's
+overlay phase does the same ([d2rloader.md](d2rloader.md)).
+
+## 9. A key with a message line
+
+Pattern for a player setting changed in game by a key, with a short fading line that says what was chosen (from the
+port's 0.1.30: one key cycles the health bars' five modes, another turns floating damage numbers on and off). Built on
+D2R 3.3 build 93847 with D2RLoader 1.3.1.
+
+- **The key:** an action registered through D2RLoader's input service, under the mod's own category in Options >
+  Controls, rebindable ([d2rloader.md](d2rloader.md#input-actions)). The port gave these actions **no default key**:
+  the player binds them, so nothing clashes with a stock key or another plugin.
+- **The setting:** apply it at once and save it in the owning plugin's own config file. Ship that file as one the
+  updater preserves, so the choice survives a restart, an update and a repair. When a new version adds a key, write it
+  into the player's older file (on the line after its table header) and keep the rest of the file as it is.
+- **A cycle of modes over several switches:** five modes from three booleans (`enabled`, show at full life, uniques and
+  bosses only). "Off" sets only `enabled = false` and keeps the other two, so the next press goes on from there.
+- **Across plugins:** the actions live in one core plugin; the plugins that own the settings export small versioned
+  functions (`...ModeV1()` returns the bits, `...SetModeV1(bits)` applies and saves them and returns saved / applied
+  but not saved / refused). The core looks them up with `GetProcAddress` on the loaded DLL at each press, so load order
+  does not matter and no hook is needed.
+- **The line:** build a chat record on the client (packet 0x26, chat type 4, colour 9 = yellow, empty name, the text)
+  and hand it to the client's chat handler (`0x12c190`) on the UI thread
+  ([d2r-93847-addresses.md](d2r-93847-addresses.md#server---client-chat-line)). It shows in the message log (bottom
+  left in HD, top left in legacy graphics) and fades like D2R's own notices. Nothing goes to the server, so it also
+  works in a joined game. Say exactly what was chosen ("Health bars: when damaged, uniques/bosses"), add "(not saved)"
+  when saving failed, and give a missing plugin a line of its own.
+- **NPC speech:** a visible chat line during an NPC's speech freezes the speech for good. While the client talks to an
+  NPC (`0x2a48760` non-zero) or the NPC menu state `0x2a486a4` is set, still change the setting but **skip** the line
+  (do not queue it). Observed: during the speech a real key press does not reach D2RLoader's action at all (the game
+  keeps the keyboard), so the guard only covers a press that does arrive.
+- **Tests:** keep the mode cycle, the line texts and the NPC rule in a header without game calls and unit-test it; then
+  one in-game run per graphics mode.

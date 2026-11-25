@@ -25,6 +25,7 @@ Contents: [What works](#what-works) · [Slots under Proton](#slots-under-proton)
 [How many games at once](#how-many-games-at-once) · [GPU gate](#gpu-gate-for-offline-jobs) ·
 [Building plugins on Linux](#building-plugins-on-linux) · [Third-party plugins under Proton](#third-party-plugins-under-proton) ·
 [HD viewer in Chrome](#a-webgpu-viewer-in-chrome-on-linux) · [Files written on Linux](#files-written-on-linux) ·
+[Desktop shortcuts](#desktop-shortcuts-that-eat-game-keys) · [Network: BBR](#network-bbr-for-slow-uploads-and-downloads) ·
 [Troubleshooting](#troubleshooting)
 
 ## What works
@@ -383,6 +384,47 @@ loads from `file://` URLs.
   will differ.
 - **Case:** Linux paths are case-sensitive and Windows paths inside the prefix are not. Keep mod file names in one case.
 
+## Desktop shortcuts that eat game keys
+
+The desktop sees a key before the game does. XFCE's window manager (xfwm4) binds **Ctrl+F12** to "workspace 12"
+(`workspace_12_key`), so a game action on Ctrl+F12 (a plugin's developer menu, for example) never fired. The fix was to
+remove that binding; xfwm4 had custom shortcuts on (`override`), so only the custom entries matter:
+
+```sh
+# save the current list first, to undo by hand later
+xfconf-query -c xfce4-keyboard-shortcuts -l -v | grep -i f12 > xfce-shortcuts-F12-before.txt
+xfconf-query -c xfce4-keyboard-shortcuts -p '/xfwm4/custom/<Control>F12' -r
+xfconf-query -c xfce4-keyboard-shortcuts -p '/xfwm4/custom/<Primary>F12' -r
+# undo
+xfconf-query -c xfce4-keyboard-shortcuts -p '/xfwm4/custom/<Primary>F12' -n -t string -s workspace_12_key
+```
+
+Other desktops have their own lists. When a game key does nothing under Linux but works on Windows, look for it in the
+desktop's keyboard shortcuts before you look at the plugin. Choose plugin default keys that desktops do not usually
+take, or ship no default key and let the player bind it.
+
+## Network: BBR for slow uploads and downloads
+
+Linux uses the `cubic` TCP congestion control by default. On a long route with some packet loss (about 350 ms round
+trip from a player's PC to the file server) it collapsed: a 44.7 MB file came at 35 to 44 KB/s. With `bbr` on the
+**server** the same file came at 2.7 to 2.9 MB/s (about 70x); with `bbr` on the **PC**, uploads to the server (release
+packages over sftp, `git push`) went from 0.27 to 2.3-2.7 MB/s (about 9x). BBR speeds up the side that sends: the
+server's setting decides downloads, your PC's decides uploads. Services in containers kept `cubic` until they were
+restarted (observed).
+
+To switch a machine (root; your distribution may differ):
+
+```sh
+modprobe tcp_bbr
+echo tcp_bbr > /etc/modules-load.d/bbr.conf
+echo 'net.ipv4.tcp_congestion_control = bbr' > /etc/sysctl.d/90-bbr.conf
+sysctl -p /etc/sysctl.d/90-bbr.conf
+sysctl -n net.ipv4.tcp_congestion_control      # bbr
+# undo: remove both files, then sysctl -w net.ipv4.tcp_congestion_control=cubic
+```
+
+If players report slow downloads from your own host ([distribution.md](distribution.md)), check the server first.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -399,3 +441,5 @@ loads from `file://` URLs.
 | Plugin crashes on the first Present only under Proton | It reads a Windows file the prefix lacks (fonts). See [above](#third-party-plugins-under-proton) |
 | Archive from Linux differs from the server's rebuild | The umask in 7z modes. Use the packager's fixed modes |
 | A third game crashes or VRAM is full | Cap VRAM (`dxgi.maxDeviceMemory`), use the `test` profile, stagger launches, and lower the shared budget |
+| A game key (Ctrl+F12) does nothing, works on Windows | The desktop's own shortcut takes it (XFCE: workspace 12). See [above](#desktop-shortcuts-that-eat-game-keys) |
+| Uploads or downloads crawl on a long route | TCP `cubic` on a lossy route. Switch the sending side to BBR ([above](#network-bbr-for-slow-uploads-and-downloads)) |
