@@ -172,12 +172,35 @@ def export(unit: scene.Unit, out, fs=None, asset: str = "", fps: float = 50.0, c
         for kind, usage in (("alb", "AlbedoTexture"), ("nrm", "NormalTexture"), ("orm", "ORMTexture")):
             if usage in part.textures:
                 pd["textures"][kind] = _texture(w, part.textures[usage], "p%d_%s" % (pi, kind))
-        alb = part.textures.get("AlbedoTexture")
+        seen = {}                 # id(Texture) -> its bundle entry: meshes that share maps share the PNGs
+
+        def own_maps(mt, stem):   # maps of a draw's own (not the part's): the page binds them for that draw
+            out = {}
+            for kind, usage in (("alb", "AlbedoTexture"), ("nrm", "NormalTexture"), ("orm", "ORMTexture")):
+                t = mt.get(usage)
+                if t is not None and t is not part.textures.get(usage):
+                    if id(t) not in seen:
+                        seen[id(t)] = _texture(w, t, "%s_%s" % (stem, kind))
+                    out[kind] = seen[id(t)]
+            return out
+
         for mi, m in enumerate(part.meshes):
             b = w.blob("mesh_%d_%d.bin" % (pi, mi), mesh_arrays(m, sk))
-            pd["meshes"].append(dict(b, name=m.name, vertices=int(len(m.pos)), triangles=int(len(m.tris)),
-                                     skinned=m.joints is not None and sk is not None,
-                                     material=alb.logical if alb else ""))
+            draws = gpu._material_draws(part, mi, m)
+            alb = draws[0][2].get("AlbedoTexture")
+            md = dict(b, name=m.name, vertices=int(len(m.pos)), triangles=int(len(m.tris)),
+                      skinned=m.joints is not None and sk is not None, material=alb.logical if alb else "")
+            own = own_maps(draws[0][2], "p%d_m%d" % (pi, mi))
+            if own:
+                md["textures"] = own
+            if len(draws) > 1:    # material groups with their own textures (gr2.Mesh.groups): one page draw each
+                groups = []
+                for gi, (f, c, mt, _prm) in enumerate(draws):
+                    ga = mt.get("AlbedoTexture")
+                    groups.append({"first": int(f), "count": int(c), "material": ga.logical if ga else "",
+                                   "textures": own_maps(mt, "p%d_m%d_g%d" % (pi, mi, gi))})
+                md["groups"] = groups
+            pd["meshes"].append(md)
         for li, L in enumerate(part.layers):
             pd["layers"].append({"name": L.name, "effect": L.effect, "picked": L.picked,
                                  "mask": _texture(w, L.mask, "p%d_l%d_mask" % (pi, li)),
@@ -295,15 +318,22 @@ def add_parsers(sub, add_common):
                    help="anisotropy of the CLI stills and of the page's Match CLI (default 1: matched; Chrome's D3D12 and "
                         "the CLI's Vulkan filter anisotropically differently, up to 26/255 apart at 16)")
     w = sub.add_parser("serve-web", help="serve the page and one bundle on 127.0.0.1 (Ctrl+C stops it)")
-    w.add_argument("bundle")
+    w.add_argument("bundle", nargs="?", default=None)
     w.add_argument("--port", type=int, default=8765)
     w.add_argument("--accept-results", default=None)
+    w.add_argument("--fx", action="store_true", help="also serve the hdfx effect tools (/api/fx/..., docs/hdfx-mcp.md)")
+    w.add_argument("--fx-out", default=None)
+    w.add_argument("--fx-roots", action="append", default=None, metavar="NAME=FOLDER")
 
 
 def run(a) -> int:
     if a.cmd == "serve-web":
         from . import webserve
-        argv = [a.bundle, "--port", str(a.port)] + (["--accept-results", a.accept_results] if a.accept_results else [])
+        argv = ([a.bundle] if a.bundle else []) + ["--port", str(a.port)]
+        argv += ["--accept-results", a.accept_results] if a.accept_results else []
+        argv += (["--fx"] if a.fx else []) + (["--fx-out", a.fx_out] if a.fx_out else [])
+        for r in a.fx_roots or []:
+            argv += ["--fx-roots", r]
         return webserve.main(argv)
     print(json.dumps(export_cmd(a), indent=1, default=str))
     return 0

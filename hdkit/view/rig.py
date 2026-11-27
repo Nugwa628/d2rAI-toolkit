@@ -40,7 +40,8 @@ class Rig:
     name: str = "default"
     light: Light = field(default_factory=Light)
     exposure: float = 1.0
-    tone: str = "srgb"                 # "srgb" (plain encode), "game" (tone.grey curve) or "lut" (tone.lut_chain)
+    tone: str = "srgb"                 # "srgb" (plain encode), "game" (tone.grey curve), "lut" (tone.lut_chain) or "clut"
+    #                                    (the game's captured post LUT, tone.clut, post["clut"] = its .npy)
     lut: str | None = None             # grading LUT path: not applied (not decoded yet)
     unknown: list = field(default_factory=list)
     assumptions: list = field(default_factory=list)
@@ -85,6 +86,9 @@ class Rig:
     def encode(self, lin_rgb):
         """Scene-linear rgb -> display sRGB 0..1 by this rig's exposure and tone."""
         import numpy as np
+        if self.tone == "clut":                # the game's captured post LUT (tone.clut; post["clut"]: its .npy)
+            from . import tone
+            return tone.clut(np.asarray(lin_rgb, float) * self.exposure, self.post["clut"])
         if self.tone == "lut":
             from . import tone
             v = np.asarray(lin_rgb, float) * self.exposure
@@ -100,6 +104,23 @@ class Rig:
         from .gpu import srgb_encode
         return srgb_encode(np.asarray(lin_rgb) * self.exposure)
 
+    def game_bloom(self) -> dict | None:
+        """post["bloom"] when it is the game's chain ({"model": "game", cutoff, intensity}: tone.game_bloom), else None."""
+        b = self.post.get("bloom")
+        return b if b and b.get("model") == "game" else None
+
+    def bloom(self, c):
+        """The light the rig's bloom adds to scene-linear rgb c (H, W, 3), in scene units: the game's chain (tone.game_bloom,
+        on the exposed image) for {"model": "game"}, else the older equal-weight stand-in (tone.bloom)."""
+        import numpy as np
+        from . import tone
+        b = self.post.get("bloom") or {}
+        e = max(self.exposure, 1e-12)
+        if b.get("model") == "game":
+            return tone.game_bloom(np.asarray(c) * e, float(b.get("cutoff", 1.0)), float(b.get("intensity", 1.0))) / e
+        return tone.bloom(np.asarray(c) * e, float(b.get("cutoff", 1.0)), float(b.get("intensity", 1.0)),
+                          int(b.get("levels", 5)), float(b.get("gain", 1.0))) / e
+
     def encode_image(self, lin):
         """Linear premultiplied RGBA image (H, W, 4) -> (display sRGB straight (H, W, 3), alpha (H, W, 1)), with the
         rig's bloom (post["bloom"]) when set. The bloom is added before the tone map where the unit covers a pixel; the
@@ -108,12 +129,11 @@ class Rig:
         (the per-pixel encode is used)."""
         import numpy as np
         b = self.post.get("bloom")
-        if not b or self.tone != "lut":
+        if not b or self.tone not in ("lut", "clut"):
             return None
         from . import tone
         c, a = lin[..., :3], np.clip(lin[..., 3:4], 0.0, 1.0)
-        B = tone.bloom(c * self.exposure, float(b.get("cutoff", 1.0)), float(b.get("intensity", 1.0)),
-                       int(b.get("levels", 5)), float(b.get("gain", 1.0))) / max(self.exposure, 1e-12)
+        B = self.bloom(c)
         straight = np.where(a > 1e-6, c / np.maximum(a, 1e-6), 0.0)
         du = np.clip(self.encode(straight + B), 0.0, 1.0)
         dh = np.clip(self.encode(B), 0.0, 1.0)

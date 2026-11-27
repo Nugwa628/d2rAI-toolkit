@@ -44,6 +44,10 @@ class Light:
     #                                            key_col, env_col and point_gain (scales every point light's colour)
     floor_clip: float = 1.0                    # 1: nothing below y = 0 is drawn (a unit alone); 0 for scenes
     fog: tuple = (0.0, 0.0, 0.0, 0.0)          # depth fog: rgb colour, density f; lit = lit x (1 - f) + colour x f
+    game: dict = field(default_factory=dict)   # the game's unit light (shaders.wgsl game_shade; rig.from_capture): dirs,
+    #                                            sh, points, ibl, exposure, value, direct_scale. Empty: the lit model.
+    shadow: dict = field(default_factory=dict)  # shadow maps (view/shadow.py spec_for): {"on": true} = the game's set-up;
+    #                                            empty: none
 
     def as_dict(self):
         d = {k: getattr(self, k) for k in ("ambient", "key_dir", "key_col", "env_col", "glow_gain", "spec_gain", "nrm_green")}
@@ -55,6 +59,10 @@ class Light:
             d["floor_clip"] = self.floor_clip
         if any(self.fog):
             d["fog"] = list(self.fog)
+        if self.game:
+            d["game"] = self.game
+        if self.shadow:
+            d["shadow"] = self.shadow
         return d
 
     def for_class(self, cls: str) -> "Light":
@@ -72,8 +80,55 @@ class Light:
 
 TEX_CACHE_BYTES = 3 << 29   # the texture cache's source arrays (and their GPU copies) before it is emptied
 MAX_POINTS = 32
-UBUF_BYTES = 1280
+UBUF_BYTES = 1904       # 1600 + the unit variant block (KT_AT)
 FOG_AT = 304            # floats: fog rgb x f, f; then p3 (terrain map corner, size), p4 (layer repeat, layers, sharpness)
+GAME_AT = 316           # floats: g0..g3, sh[9], gd[8] (the game unit light, shaders.wgsl), 84 floats
+MAX_GAME_DIRS = 4
+KT_AT = 400             # floats: the unit variant's 3 KTINT transforms (72) + (on, mask floor) (unitvariant.Choice.pack)
+
+
+def pack_game(g: dict) -> np.ndarray:
+    """The game unit light block of the uniform buffer (floats GAME_AT.., shaders.wgsl g0..gd) from Light.game."""
+    u = np.zeros(84, np.float32)
+    if not g:
+        return u
+    dirs = list(g.get("dirs") or [])[:MAX_GAME_DIRS]
+    val = g.get("value") or {}
+    ibl = g.get("ibl") or {}
+    u[0:4] = (1.0, len(dirs), float(g.get("exposure", 1.0)), 1.0 if val.get("on", bool(val)) else 0.0)
+    u[4:8] = (list(val.get("poly") or [0.0, 0.0, 0.0, 0.0]) + [0.0] * 4)[:4]
+    u[8:12] = (float(val.get("strength", 0.0)), float(val.get("brightness", 0.0)), float(ibl.get("intensity", 1.0)),
+               float(g.get("direct_scale", 1.0)))
+    u[12:16] = (float(ibl.get("diffuse", 1.0)), float(ibl.get("specular", 1.0)), 0.0, 0.0)
+    sh = np.zeros((9, 3), np.float32)
+    if g.get("sh"):
+        sh[:] = np.asarray(g["sh"], np.float32).reshape(9, 3)
+    u[16:52].reshape(9, 4)[:, :3] = sh
+    for i, d in enumerate(dirs):
+        v = np.asarray(d["dir"], float)
+        o = 52 + 8 * i
+        u[o:o + 3] = v / max(np.linalg.norm(v), 1e-9)
+        u[o + 3] = float(d.get("diffuse", 1.0))
+        u[o + 4:o + 7] = d["color"]
+        u[o + 7] = float(d.get("specular", 1.0))
+    return u
+
+
+def game_points(g: dict) -> tuple:
+    """Light.game's local lights as point dicts (colour x intensity, radius; `atten` = - the falloff exponent: D2R's own
+    form in shaders.wgsl point_falloff)."""
+    return tuple(dict({"name": p.get("name", "game"), "pos": tuple(p["pos"]), "radius": float(p["radius"]),
+                       "color": list(p["color"]), "atten": -abs(float(p.get("exp", 2.0)))},
+                      **{k: p[k] for k in ("spot", "cube") if k in p},      # spot cone / shadow maps (view/shadow.py)
+                      shadowed=bool(p.get("shadowed", str(p.get("name", "")).startswith("shadowed_point"))))
+                 for p in (g or {}).get("points") or ())
+
+
+def model_points(points, game: dict) -> list:
+    """The local lights a game-shaded model gets: ps_models_p runs its shadowed-point loop (the player's light, a unit's
+    own light) only when cb7[80] bit 1 is set, and no captured model draw has it (flags 5 or 9 in every capture: lane
+    r4-lighting4), so those light the ground and effects but not models. Light.game "shadowed_points" True keeps them."""
+    return list(points) if (game or {}).get("shadowed_points") else [p for p in points if not p.get("shadowed")]
 
 
 def pack_points(points) -> np.ndarray:
@@ -171,8 +226,9 @@ class Draw:
     hidden_body: bool = False                           # body drawn black (it still hides what is behind it)
     light_class: str = "unit"                           # which of Light.classes lights it ('unit', 'world')
     blend: float = 0.0                                  # > 0: alpha-blended material, alpha x blend (D2R AlphaIntensity)
-    emissive: float = 0.0                               # EmissiveIntensity: albedo x mask x this, added
+    emissive: float = 0.0                               # EmissiveIntensity: albedo x (1 - ORM a) x this, added
     terrain: dict | None = None                         # splat ground: {"p3": (x, z, w, h), "p4": (repeat, layers, sharp)}
+    variant: np.ndarray | None = None                   # unitvariant.Choice.pack(): KTINT recolour of the albedo (r3-unitmat)
 
 
 @dataclass
@@ -180,6 +236,10 @@ class Prepared:
     draws: list
     notes: list = field(default_factory=list)
     pose: dict = field(default_factory=dict)
+    # depth-only draws (lane r4-water): a placed object whose colour is already in a game plate (the shrine basin) writes
+    # the scene depth only, so effect draws are hidden by it and read it (soft particles, water thickness); no colour,
+    # no directional shadow, no aura stencil (they cast into the shadowed point's cube: lane r5-playerlight)
+    occluders: list = field(default_factory=list)
 
     def select(self, hide=()) -> "Prepared":
         """Layer toggles: a copy without what `hide` names. Each entry is `mesh:<name>`, `part:<name>`,
@@ -207,8 +267,26 @@ class Prepared:
             keep = [(lb, nm) for lb, nm in zip(d.layers, names) if not hit("layer", nm)]
             out.append(Draw(d.vbuf, d.count, d.ubuf, d.bind, [lb for lb, _n in keep], d.alpha_cut, d.world, d.uv_tris,
                             d.name, d.part, d.material, [n for _l, n in keep], d.hidden_body or "body" in hide,
-                            d.light_class, d.blend, d.emissive, d.terrain))
-        return Prepared(out, self.notes + ["hidden: %s" % ", ".join(hide)], self.pose)
+                            d.light_class, d.blend, d.emissive, d.terrain, d.variant))
+        return Prepared(out, self.notes + ["hidden: %s" % ", ".join(hide)], self.pose, self.occluders)
+
+
+def _material_draws(part, mi, m) -> list:
+    """[(tri_first, tri_count, textures, params)] of mesh mi of a part: one draw per material group (gr2.Mesh.groups, as the game draws
+    them) when the groups differ in textures or params, else one draw of the whole mesh with its first group's textures
+    (the mesh's own maps over the part's). Parts built in code (no scene.Part.draw_groups) draw whole with part.textures.
+    Before this, every mesh of a part was drawn with the part's first textures and only the first group's maps were read
+    (gr2), so Mephisto's flesh, bones and head were all drawn with bones_ALB (lane hdfx-body)."""
+    whole = [(0, len(m.tris), part.textures, getattr(m, "params", None) or {})]
+    if not hasattr(part, "draw_groups"):
+        return whole
+    gs = part.draw_groups(mi)
+    if len(gs) == 1 and gs[0][1] >= len(m.tris):
+        return [(0, len(m.tris), gs[0][2], gs[0][3])]
+    sig = {(tuple(sorted((u, id(t)) for u, t in tx.items())), tuple(sorted(prm.items()))) for _f, _c, tx, prm in gs}
+    if len(sig) == 1:
+        return [(0, len(m.tris), gs[0][2], gs[0][3])]
+    return [(f, c, tx, prm) for f, c, tx, prm in gs if c > 0]
 
 
 class Renderer:
@@ -220,14 +298,16 @@ class Renderer:
         self.max_tex = int(lim["max-texture-dimension-2d"])
         self.device = self.adapter.request_device_sync(required_limits={"max-texture-dimension-2d": self.max_tex})
         self.msaa = int(msaa)
-        mod = self.device.create_shader_module(code=SHADER.read_text(encoding="utf-8"))
+        from . import shadow as _shadow
+        mod = self.device.create_shader_module(code=_shadow.patch(SHADER.read_text(encoding="utf-8")))
         T = wgpu.ShaderStage
         tex = {"sample_type": "float", "view_dimension": "2d"}
         self.bgl = self.device.create_bind_group_layout(entries=[
             {"binding": 0, "visibility": T.VERTEX | T.FRAGMENT, "buffer": {"type": "uniform"}},
             {"binding": 1, "visibility": T.FRAGMENT, "sampler": {"type": "filtering"}},
             *[{"binding": b, "visibility": T.FRAGMENT, "texture": tex} for b in range(2, 7)]])
-        layout = self.device.create_pipeline_layout(bind_group_layouts=[self.bgl])
+        self.shadow = _shadow.ShadowMaps(self)            # bind group 1 of every scene pipeline
+        layout = self.device.create_pipeline_layout(bind_group_layouts=[self.bgl, self.shadow.bgl])
         A = wgpu.VertexFormat
         vb = [{"array_stride": FLOATS * 4, "step_mode": "vertex", "attributes": [
             {"format": A.float32x3, "offset": 0, "shader_location": 0},
@@ -252,12 +332,18 @@ class Renderer:
         over = {"color": {"src_factor": "one", "dst_factor": "one-minus-src-alpha", "operation": "add"},
                 "alpha": {"src_factor": "one", "dst_factor": "one-minus-src-alpha", "operation": "add"}}
         self.p_blend = pipe("fs_main", over, False, "less-equal")
+        self.p_depth = self.device.create_render_pipeline(      # Prepared.occluders: depth only, no colour write
+            layout=layout, vertex={"module": mod, "entry_point": "vs", "buffers": vb},
+            primitive={"topology": "triangle-list", "cull_mode": "none"},
+            depth_stencil={"format": "depth32float", "depth_write_enabled": True, "depth_compare": "less"},
+            multisample={"count": self.msaa},
+            fragment={"module": mod, "entry_point": "fs_main", "targets": [{"format": "rgba16float", "write_mask": 0}]})
         arr = {"sample_type": "float", "view_dimension": "2d-array"}
         self.bgl_t = self.device.create_bind_group_layout(entries=[
             {"binding": 0, "visibility": T.VERTEX | T.FRAGMENT, "buffer": {"type": "uniform"}},
             {"binding": 1, "visibility": T.FRAGMENT, "sampler": {"type": "filtering"}},
             *[{"binding": b, "visibility": T.FRAGMENT, "texture": arr} for b in range(7, 11)]])
-        lay_t = self.device.create_pipeline_layout(bind_group_layouts=[self.bgl_t])
+        lay_t = self.device.create_pipeline_layout(bind_group_layouts=[self.bgl_t, self.shadow.bgl])
         self.p_terrain = self.device.create_render_pipeline(
             layout=lay_t, vertex={"module": mod, "entry_point": "vs", "buffers": vb},
             primitive={"topology": "triangle-list", "cull_mode": "none"},
@@ -366,27 +452,38 @@ class Renderer:
         size gap of viewer/p3, where the game's layer may skip the root scale). `place`: a 4x4 world matrix applied after
         all that (a placed scene object; rotation and uniform scale), `light_class`: the Light.classes entry its draws use."""
         prep = Prepared([])
+        self.last_posed = {}            # part name -> [(mesh, world pos, world normals)] (fx/modeltrack.py, lane r4-glow)
         if unit.kind == "card":
             return self._prepare_card(unit, cam, prep)
         R = rot_y(yaw) * unit.root_scale
         Rn = rot_y(yaw)
+        poses = {}
+
+        def pose_for(skeleton):
+            key = id(skeleton)
+            if key not in poses:
+                poses[key] = (poser(skeleton) if poser is not None else
+                              gr2.pose_at(skeleton, unit.clips.get(clip) if clip else None, t, **(pose_kw or {})))
+            return poses[key]
+
         for part in unit.parts:
-            if part.skeleton is None:
-                pose = None
-            elif poser is not None:
-                pose = poser(part.skeleton)
-            else:
-                pose = gr2.pose_at(part.skeleton, unit.clips.get(clip) if clip else None, t, **(pose_kw or {}))
+            attachment = getattr(part, "attachment", None)
+            pose = None
+            if attachment is not None:
+                mount = pose_for(attachment.skeleton).worlds[attachment.bone] @ attachment.transform
+                M = mount[:3, :3]
+                handedness = np.linalg.det(M)
+                if abs(handedness) < 1e-12:
+                    continue
+                normal_matrix = np.linalg.inv(M)
+            elif part.skeleton is not None:
+                pose = pose_for(part.skeleton)
             if pose is not None:
                 prep.pose = {"clip": pose.clip or "(rest)", "time": round(pose.time, 4), "tracks": pose.tracks,
                              "unsupported_parts": pose.unsupported}
                 if poser is None and clip and clip not in unit.clips:
                     prep.notes.append("clip %s not in the unit's clips %s: rest pose" % (clip, sorted(unit.clips)))
-            tx = part.textures
-            views = {k: (self.texture(tx[u].mips, srgb=tx[u].srgb) if u in tx else self.default(k))
-                     for k, u in (("alb", "AlbedoTexture"), ("nrm", "NormalTexture"), ("orm", "ORMTexture"))}
-            alb_size = tx["AlbedoTexture"].mips[0].shape[:2] if "AlbedoTexture" in tx else (4, 4)
-            for m in part.meshes:
+            for mi, m in enumerate(part.meshes):
                 sk_key = (id(m), None if pose is None else hash(pose.worlds.tobytes()))
                 hit = self._skinned.get(sk_key)
                 if hit is None or hit[0] is not m:   # id() is reused once a mesh is freed: keep the mesh, check it
@@ -394,6 +491,13 @@ class Renderer:
                         self._skinned.clear()
                     hit = self._skinned[sk_key] = (m, gr2.skin(m, part.skeleton, pose))
                 P, N, Tn = hit[1]
+                if attachment is not None:
+                    P = P @ M.T + mount[:3, 3]
+                    N = N @ normal_matrix
+                    T = Tn[:, :3] @ M.T
+                    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+                    Tn = np.hstack([T / np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-12),
+                                    Tn[:, 3:4] * np.sign(handedness)])
                 Pw, Nw = P @ R.T, N @ Rn.T
                 Tw = np.hstack([Tn[:, :3] @ Rn.T, Tn[:, 3:4]])
                 if place is not None:
@@ -402,27 +506,40 @@ class Renderer:
                     Pw = Pw @ Mp[:3, :3].T + Mp[:3, 3]
                     Nw = Nw @ Rp.T
                     Tw = np.hstack([Tw[:, :3] @ Rp.T, Tw[:, 3:4]])
-                vbuf, n = self._vbuf(Pw, Nw, Tw, m.uv, m.tris)
-                ub = self._ubuf()
-                bind = self._bind(ub, views["alb"], views["nrm"], views["orm"], self.default("mask"), self.default("strip"))
-                layers, lnames = [], []
-                lvbuf = vbuf if layer_scale == 1.0 else self._vbuf(Pw * float(layer_scale), Nw, Tw, m.uv, m.tris)[0]
-                for L in part.layers:
-                    lub = self._ubuf()
-                    layers.append((lub, self._bind(lub, views["alb"], views["nrm"], views["orm"],
-                                                   self.texture(L.mask.mips), self.texture(L.strip.mips, srgb=True)), lvbuf))
-                    lnames.append(L.name)
-                prm = getattr(m, "params", None) or {}
-                emis = float(prm.get("emissive", 0.0))
-                if emis > 0.0:
-                    mk = self.texture(tx["MaskTexture"].mips) if "MaskTexture" in tx else self.default("alb")
-                    bind = self._bind(ub, views["alb"], views["nrm"], views["orm"], mk, self.default("strip"))
-                uvt = m.uv[m.tris] * np.array([alb_size[1], alb_size[0]], float)
-                prep.draws.append(Draw(vbuf, n, ub, bind, layers, float(prm.get("alpha_cut", 0.0)), Pw[m.tris], uvt,
-                                       m.name, part.name,
-                                       tx["AlbedoTexture"].logical if "AlbedoTexture" in tx else "", lnames,
-                                       light_class=light_class, blend=float(prm.get("blend", 0.0)), emissive=emis))
+                self.last_posed.setdefault(part.name, []).append((m, Pw, Nw))
+                if getattr(part, "track_only", False):
+                    continue
+                for f, c, tx, prm in _material_draws(part, mi, m):
+                    self._prepare_draw(prep, part, m, m.tris[f:f + c], tx, prm, Pw, Nw, Tw, layer_scale, light_class,
+                                       variant=getattr(unit, "variant", None))
         return prep
+
+    def _prepare_draw(self, prep, part, m, tris, tx, prm, Pw, Nw, Tw, layer_scale, light_class, variant=None):
+        """One draw: triangles `tris` of mesh m (posed Pw, Nw, Tw) with textures `tx` (usage -> scene.Texture) and
+        material params `prm`."""
+        views = {k: (self.texture(tx[u].mips, srgb=tx[u].srgb) if u in tx else self.default(k))
+                 for k, u in (("alb", "AlbedoTexture"), ("nrm", "NormalTexture"), ("orm", "ORMTexture"))}
+        alb_size = tx["AlbedoTexture"].mips[0].shape[:2] if "AlbedoTexture" in tx else (4, 4)
+        vbuf, n = self._vbuf(Pw, Nw, Tw, m.uv, tris)
+        ub = self._ubuf()
+        bind = self._bind(ub, views["alb"], views["nrm"], views["orm"], self.default("mask"), self.default("strip"))
+        layers, lnames = [], []
+        lvbuf = vbuf if layer_scale == 1.0 else self._vbuf(Pw * float(layer_scale), Nw, Tw, m.uv, tris)[0]
+        for L in part.layers:
+            lub = self._ubuf()
+            layers.append((lub, self._bind(lub, views["alb"], views["nrm"], views["orm"],
+                                           self.texture(L.mask.mips), self.texture(L.strip.mips, srgb=True)), lvbuf))
+            lnames.append(L.name)
+        emis = float(prm.get("emissive", 0.0))
+        kt = variant.pack() if variant is not None and not variant.identity() else None
+        if kt is not None and "MaskTexture" in tx:     # the KTINT mask (no mask: black, only a state's floor tints)
+            bind = self._bind(ub, views["alb"], views["nrm"], views["orm"], self.texture(tx["MaskTexture"].mips),
+                              self.default("strip"))
+        uvt = m.uv[tris] * np.array([alb_size[1], alb_size[0]], float)
+        prep.draws.append(Draw(vbuf, n, ub, bind, layers, float(prm.get("alpha_cut", 0.0)), Pw[tris], uvt,
+                               m.name, part.name,
+                               tx["AlbedoTexture"].logical if "AlbedoTexture" in tx else "", lnames,
+                               light_class=light_class, blend=float(prm.get("blend", 0.0)), emissive=emis, variant=kt))
 
     def _prepare_card(self, unit, cam, prep):
         c = unit.card
@@ -442,8 +559,8 @@ class Renderer:
         return prep
 
     # ---- rendering ---------------------------------------------------------------------------------------------------------
-    def _target(self, w, h):
-        key = (w, h)
+    def _target(self, w, h, sampled_depth=False):
+        key = (w, h, bool(sampled_depth))
         if key not in self._targets:
             wgpu = self.wgpu
             U = wgpu.TextureUsage
@@ -451,42 +568,65 @@ class Renderer:
                                              usage=U.RENDER_ATTACHMENT)
             res = self.device.create_texture(size=(w, h, 1), format="rgba16float", usage=U.RENDER_ATTACHMENT | U.COPY_SRC)
             dep = self.device.create_texture(size=(w, h, 1), format="depth32float", sample_count=self.msaa,
-                                             usage=U.RENDER_ATTACHMENT)
+                                             usage=U.RENDER_ATTACHMENT | (U.TEXTURE_BINDING if sampled_depth else 0))
             if len(self._targets) > 4:
                 self._targets.clear()
             self._targets[key] = (col, res, dep)
         return self._targets[key]
 
-    def depth_range(self, prep, cam):
-        d = np.concatenate([cam.depth(dr.world.reshape(-1, 3)) for dr in prep.draws]) if prep.draws else np.zeros(1)
+    def depth_range(self, prep, cam, overlay=None):
+        pts = [cam.depth(dr.world.reshape(-1, 3)) for dr in list(prep.draws) + list(getattr(prep, "occluders", []))]
+        if overlay is not None:
+            pts.append(cam.depth(np.asarray(overlay.points(), float).reshape(-1, 3)))
+        d = np.concatenate(pts) if pts else np.zeros(1)
+        if d.size == 0:
+            d = np.zeros(1)
         return float(d.min()) - 1.0, float(d.max()) + 1.0
 
-    def render_rect(self, prep, cam, origin, rect, pass_name="lit", light=None, glow=True, drange=None) -> np.ndarray:
+    def render_rect(self, prep, cam, origin, rect, pass_name="lit", light=None, glow=True, drange=None,
+                    overlay=None, ao=None, occ_main=False) -> np.ndarray:
         """Linear premultiplied RGBA float32 (h, w, 4) of the pixel rectangle rect = (x0, y0, w, h) of the image whose
-        world origin is at pixel `origin`."""
+        world origin is at pixel `origin`. `overlay`: an object drawn after the opaque scene into the same targets
+        (hdkit.fx.render.FxOverlay: transparent effect draws, depth-tested, soft particles from the scene depth); it has
+        `points()` (world points for the depth range) and `encode(gpu, enc, col, res, dep, M, size, drange, cam)`.
+        `ao`: (h, w) factor multiplied onto the opaque scene before the blended draws and the overlay (the game's AO
+        apply); `occ_main`: occluders drawn like the scene (the AO's depth and normals passes), not depth only."""
         light = light or Light()
         x0, y0, w, h = rect
         wp = -(-w // 32) * 32                    # rows read back in multiples of 256 bytes
         if max(wp, h) > self.max_tex:
             raise ValueError("tile %dx%d over the GPU limit %d" % (wp, h, self.max_tex))
-        col, res, dep = self._target(wp, h)
+        col, res, dep = self._target(wp, h, sampled_depth=overlay is not None)
         dmin, dmax = drange or self.depth_range(prep, cam)
         M = cam.matrix(origin, (x0, y0, wp, h), dmin, dmax)
         _r, _u, wv = cam.basis()
         pid = PASSES[pass_name]
+        from . import shadow as _shadow
+        sh_ds = float(light.shadow.get("direct_scale", 1.0)) if _shadow.spec_for(light) is not None else None
         lights = {}
         many = {}
-        for dr in prep.draws:
+        occ = list(getattr(prep, "occluders", None) or [])
+        for dr in list(prep.draws) + occ:
             body_pid = PASSES["glow"] if dr.hidden_body and pid in (0, 5) else pid
             if dr.light_class not in lights:
                 lc0 = light.for_class(dr.light_class)
-                lights[dr.light_class] = (lc0, pack_points(lc0.points))
+                if lc0.game:                     # the game's local lights first, then the scene's (effect lights)
+                    from dataclasses import replace as _rep
+                    # effect lights (FxLight.point, "fx") carry Lambert's 1 / pi, which game_shade applies itself
+                    scene = tuple(dict(p, color=[c * np.pi for c in p["color"]]) if p.get("fx") else p
+                                  for p in lc0.points)
+                    lc0 = _rep(lc0, points=game_points(lc0.game) + scene)
+                mp = model_points(lc0.points, lc0.game) if lc0.game else list(lc0.points)
+                lights[dr.light_class] = (lc0, pack_points(lc0.points), mp, pack_points(mp))
                 many[dr.light_class] = len(lc0.points) > MAX_POINTS
-            lc, packed = lights[dr.light_class]
+            lc, packed, mpts, mpacked = lights[dr.light_class]
+            pts = lc.points
+            if lc.game and not dr.terrain:       # a game-shaded model: no shadowed point lights (model_points)
+                pts, packed = mpts, mpacked
             if many[dr.light_class]:
                 W3 = dr.world.reshape(-1, 3)
                 lo, hi = W3.min(0), W3.max(0)
-                packed = pack_points(pick_points(lc.points, (lo + hi) / 2.0, float(np.linalg.norm(hi - lo)) / 2.0))
+                packed = pack_points(pick_points(pts, (lo + hi) / 2.0, float(np.linalg.norm(hi - lo)) / 2.0))
             for ub, cut, p in [(dr.ubuf, dr.alpha_cut, body_pid)] + [(lay[0], dr.alpha_cut, pid) for lay in dr.layers]:
                 u = np.zeros(UBUF_BYTES // 4, np.float32)
                 u[0:16] = M.T.ravel()
@@ -503,69 +643,159 @@ class Renderer:
                 u[46] = dr.blend
                 fr, fg, fb, ff = (tuple(lc.fog) + (0.0, 0.0, 0.0, 0.0))[:4]
                 u[FOG_AT:FOG_AT + 4] = (fr * ff, fg * ff, fb * ff, ff)
+                if lc.game and not dr.terrain:
+                    u[GAME_AT:GAME_AT + 84] = pack_game(lc.game)
+                    if sh_ds is not None:            # real shadow maps replace the rig's one-number stand-in
+                        u[GAME_AT + 11] = sh_ds
+                if dr.variant is not None and not dr.terrain:
+                    u[KT_AT:KT_AT + len(dr.variant)] = dr.variant
                 if dr.terrain:
                     u[FOG_AT + 4:FOG_AT + 8] = dr.terrain["p3"]
                     u[FOG_AT + 8:FOG_AT + 12] = (tuple(dr.terrain["p4"]) + (0.0,))[:4]
                 self.device.queue.write_buffer(ub, 0, u.tobytes())
         enc = self.device.create_command_encoder()
+        self.shadow.encode(enc, prep, light, overlay)    # the casters into the slices (or 'off')
+        keep = "store" if overlay is not None else "discard"
         rp = enc.begin_render_pass(
             color_attachments=[{"view": col.create_view(), "resolve_target": res.create_view(), "load_op": "clear",
-                                "store_op": "discard", "clear_value": (0, 0, 0, 0)}],
-            depth_stencil_attachment={"view": dep.create_view(), "depth_load_op": "clear", "depth_store_op": "discard",
+                                "store_op": keep, "clear_value": (0, 0, 0, 0)}],
+            depth_stencil_attachment={"view": dep.create_view(), "depth_load_op": "clear", "depth_store_op": keep,
                                       "depth_clear_value": 1.0})
         terr = [dr for dr in prep.draws if dr.terrain]
         if terr:
             rp.set_pipeline(self.p_terrain)
+            rp.set_bind_group(1, self.shadow.bind)
             for dr in terr:
                 rp.set_bind_group(0, dr.bind)
                 rp.set_vertex_buffer(0, dr.vbuf)
                 rp.draw(dr.count)
         rp.set_pipeline(self.p_main)
+        rp.set_bind_group(1, self.shadow.bind)
         for dr in prep.draws:
-            if dr.terrain or dr.blend > 0.0:
+            if dr.terrain or dr.blend > 0.0 or getattr(dr, "cast_only", False):   # cast_only: shadow maps only
                 continue
             rp.set_bind_group(0, dr.bind)
             rp.set_vertex_buffer(0, dr.vbuf)
             rp.draw(dr.count)
-        bl = [dr for dr in prep.draws if dr.blend > 0.0 and not dr.terrain]
+        if occ:
+            rp.set_pipeline(self.p_main if occ_main else self.p_depth)
+            rp.set_bind_group(1, self.shadow.bind)
+            for dr in occ:
+                rp.set_bind_group(0, dr.bind)
+                rp.set_vertex_buffer(0, dr.vbuf)
+                rp.draw(dr.count)
+        if ao is not None:
+            self._ao_multiply(rp, ao, wp, h)
+        bl = [dr for dr in prep.draws if dr.blend > 0.0 and not dr.terrain and not getattr(dr, "cast_only", False)]
         if bl:                                  # back to front (camera.depth grows towards the camera)
             dk = [float(cam.depth(dr.world.reshape(-1, 3)).mean()) for dr in bl]
             rp.set_pipeline(self.p_blend)
+            rp.set_bind_group(1, self.shadow.bind)
             for _d, dr in sorted(zip(dk, bl), key=lambda t: t[0]):
                 rp.set_bind_group(0, dr.bind)
                 rp.set_vertex_buffer(0, dr.vbuf)
                 rp.draw(dr.count)
         if glow and pass_name in ("lit", "unlit", "glow"):
             rp.set_pipeline(self.p_glow)
+            rp.set_bind_group(1, self.shadow.bind)
             for dr in prep.draws:
+                if getattr(dr, "cast_only", False):
+                    continue
                 for lay in dr.layers:
                     rp.set_bind_group(0, lay[1])
                     rp.set_vertex_buffer(0, lay[2] if len(lay) > 2 else dr.vbuf)
                     rp.draw(dr.count)
         rp.end()
+        if overlay is not None:
+            overlay.encode(self, enc, col, res, dep, M, (wp, h), (dmin, dmax), cam)
         self.device.queue.submit([enc.finish()])
         data = self.device.queue.read_texture({"texture": res, "mip_level": 0, "origin": (0, 0, 0)},
                                               {"offset": 0, "bytes_per_row": wp * 8, "rows_per_image": h}, (wp, h, 1))
         a = np.frombuffer(data, np.float16).reshape(h, wp, 4)[:, :w].astype(np.float32)
         return a
 
-    def render(self, prep, cam, size, origin, pass_name="lit", light=None, glow=True, ss=1, tile=None, bg=None, rig=None):
+    def render(self, prep, cam, size, origin, pass_name="lit", light=None, glow=True, ss=1, tile=None, bg=None, rig=None,
+               overlay=None, linear=False):
         """8-bit RGBA (H, W, 4) at `size` = (W, H): rendered at ss x (camera scale and image), tiled when larger than
-        `tile` (default: the GPU limit), box-filtered down, sRGB-encoded (or by `rig`: its light, exposure and tone)."""
+        `tile` (default: the GPU limit), box-filtered down, sRGB-encoded (or by `rig`: its light, exposure and tone).
+        `overlay`: see render_rect. `linear`: return the box-filtered linear premultiplied float image instead."""
         if rig is not None:
             light = rig.light
         W, H = size
         big = _scaled_cam(cam, ss)
         tile = min(tile or self.max_tex, self.max_tex)
         tile -= tile % (32 * ss) if tile > 32 * ss else 0
-        drange = self.depth_range(prep, big)
+        drange = self.depth_range(prep, big, overlay)
+        ao = self.ssao(prep, cam, size, origin, light, overlay) if pass_name == "lit" else None
         Wss, Hss = W * ss, H * ss
         out = np.zeros((Hss, Wss, 4), np.float32)
         for rect in tiling.plan(Wss, Hss, tile):
             x0, y0, w, h = rect
+            aot = None if ao is None else np.repeat(np.repeat(ao[y0 // ss:-(-(y0 + h) // ss), x0 // ss:-(-(x0 + w) // ss)],
+                                                              ss, 0), ss, 1)[y0 % ss:y0 % ss + h, x0 % ss:x0 % ss + w]
             out[y0:y0 + h, x0:x0 + w] = self.render_rect(prep, big, (origin[0] * ss, origin[1] * ss), rect, pass_name,
-                                                         light, glow, drange)
+                                                         light, glow, drange, overlay, aot)
+        if linear:
+            return box_down(out, ss)
         return to_uint8(box_down(out, ss), pass_name, bg, rig.encode if rig is not None else None)
+
+    def ssao(self, prep, cam, size, origin, light, overlay=None):
+        """The game's AO factor (H, W) for a lit render (view.assao, the game's ASSAO) from this scene's depth and
+        normals at `size` (the game's full resolution when the render is a game frame), or None: off unless the light is
+        game-shaded (light.game), `light.game["ao"]` false turns it off, a dict overrides assao.GAME."""
+        g = getattr(light, "game", None) if light is not None else None
+        if not g or g.get("ao", True) is False or not prep.draws:
+            return None
+        from . import assao
+        C = dict(assao.GAME, **(g["ao"] if isinstance(g.get("ao"), dict) else {}))
+        W, H = size
+        dmin, dmax = drange = self.depth_range(prep, cam, overlay)
+        buf = {p: np.zeros((H, W, 4), np.float32) for p in ("depth", "normals", "cover")}
+        for p, b in buf.items():                 # cover: the scene without the occluders (the pixels AO multiplies)
+            for x0, y0, w, h in tiling.plan(W, H, self.max_tex):
+                b[y0:y0 + h, x0:x0 + w] = self.render_rect(prep, cam, origin, (x0, y0, w, h), p.replace("cover", "depth"),
+                                                           light, False, drange, occ_main=p != "cover")
+        ys, xs = np.nonzero(buf["cover"][..., 3] > 0)
+        if not len(xs):
+            return None
+        a = buf["depth"][..., 3]
+        hit = a > 1e-3
+        r, u, wv = (np.asarray(v, float) for v in cam.basis())
+        py = ((W / 2.0 - origin[0]) * r[1] - (H / 2.0 - origin[1]) * u[1]) / cam.k
+        dc = -py / wv[1] if abs(wv[1]) > 1e-9 else 0.0       # the y = 0 ground under the image centre, along wv
+        dist = buf["depth"][..., 0] / np.maximum(a, 1e-6) * (dmax - dmin) + dmin
+        z = np.where(hit, C["z_centre"] - (dist - dc), C["z_add"] + C["z_mul"])
+        n = buf["normals"][..., :3] / np.maximum(a, 1e-6)[..., None] * 2.0 - 1.0
+        n = np.stack([n @ r, n @ u, n @ wv], -1)
+        n = np.where(hit[..., None], n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6), (0.0, 0.0, 1.0))
+        He, We = H + H % 2, W + W % 2
+        ao = assao.ssao(np.pad(z, ((0, He - H), (0, We - W)), mode="edge"),
+                        np.pad(n, ((0, He - H), (0, We - W), (0, 0)), mode="edge"), (We / cam.k, He / cam.k), C,
+                        (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
+        return ao[:H, :W].astype(np.float32)
+
+    def _ao_multiply(self, rp, ao, w, h):
+        """Multiply the colour target by `ao` (h, <= w): a full-screen triangle, blend Zero / SrcColor (the game's)."""
+        wgpu = self.wgpu
+        if getattr(self, "p_ao", None) is None:
+            mod = self.device.create_shader_module(code=AO_WGSL)
+            mul = {"color": {"src_factor": "zero", "dst_factor": "src", "operation": "add"},
+                   "alpha": {"src_factor": "zero", "dst_factor": "one", "operation": "add"}}
+            self.p_ao = self.device.create_render_pipeline(
+                layout="auto", vertex={"module": mod, "entry_point": "vs_ao", "buffers": []},
+                primitive={"topology": "triangle-list"}, multisample={"count": self.msaa},
+                depth_stencil={"format": "depth32float", "depth_write_enabled": False, "depth_compare": "always"},
+                fragment={"module": mod, "entry_point": "fs_ao", "targets": [{"format": "rgba16float", "blend": mul}]})
+        a = np.ones((h, w), np.float32)
+        a[:, :ao.shape[1]] = ao
+        t = self.device.create_texture(size=(w, h, 1), format="r32float",
+                                       usage=wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST)
+        self.device.queue.write_texture({"texture": t}, a.tobytes(), {"bytes_per_row": w * 4, "rows_per_image": h},
+                                        (w, h, 1))
+        rp.set_pipeline(self.p_ao)
+        rp.set_bind_group(0, self.device.create_bind_group(layout=self.p_ao.get_bind_group_layout(0),
+                                                           entries=[{"binding": 0, "resource": t.create_view()}]))
+        rp.draw(3)
 
     def render_streamed(self, prep, cam, size, origin, path, pass_name="lit", light=None, glow=True, ss=1, tile=4096,
                         gate=None, log=print, keep=(), rig=None) -> dict:
@@ -605,6 +835,18 @@ class Renderer:
         png.close()
         return {"tiles": len(plan), "tile": tile, "ss": ss, "seconds": round(time.time() - t0, 1),
                 "kept": [kept.get(i) for i in range(len(keep))]}
+
+
+AO_WGSL = """
+@group(0) @binding(0) var t_ao: texture_2d<f32>;
+@vertex fn vs_ao(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32((i << 1u) & 2u) * 2.0 - 1.0, f32(i & 2u) * 2.0 - 1.0, 0.0, 1.0);
+}
+@fragment fn fs_ao(@builtin(position) q: vec4<f32>) -> @location(0) vec4<f32> {
+  let a = textureLoad(t_ao, vec2<i32>(q.xy), 0).r;
+  return vec4<f32>(a, a, a, 1.0);
+}
+"""
 
 
 def _scaled_cam(cam, ss):

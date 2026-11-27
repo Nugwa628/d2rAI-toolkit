@@ -31,6 +31,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from hdkit.fx.schema import SIZES  # (field sizes of every class; hdkit.fx.pfile is the full reader)
+
 MAGIC = 0xCA000B11
 RENDERER = "CLayerCompileCacheRenderer"
 PROPERTY = "CLayerCompileCacheRendererProperty"
@@ -96,7 +98,7 @@ class ParticleFile:
         return self.strings[self.objects[i][0]]
 
     def fields(self, i: int):
-        """(field id, value offset) of object i, for the classes whose layout is known (renderers, properties)."""
+        """(field id, value offset) of object i (any of the 26 classes of hdkit.fx.schema)."""
         _c, off, size = self.objects[i]
         b = self.raw
         n = struct.unpack_from("<H", b, off + 5)[0]
@@ -114,7 +116,10 @@ class ParticleFile:
                 else:
                     q += 4
             else:
-                raise ValueError(f"no field layout for {kind}")
+                size = SIZES.get(kind, {}).get(fid)
+                if size is None:
+                    raise ValueError(f"no field layout for {kind} field {fid}")
+                q += size if size > 0 else 4 + -size * struct.unpack_from("<I", b, q)[0]
         if q != off + size:
             raise ValueError(f"object {i} ({kind}): fields end at {q:#x}, object at {off + size:#x}")
         return out

@@ -158,8 +158,9 @@ class PageIsLocal(unittest.TestCase):
             text = p.read_text(encoding="utf-8")
             code = re.sub(r"(?m)^\s*//.*$", "", text)       # comment lines may cite sources
             self.assertEqual(url.findall(code), [], p.name)
-        self.assertEqual(sorted(p.name for p in WEB.iterdir()), ["anim.js", "index.html", "map.html", "map.js", "present.wgsl", "rounds.html",
-                                                                "viewer.js"])   # map.*: hdkit.view.mapview.webmap; rounds.html: /rounds
+        self.assertEqual(sorted(p.name for p in WEB.iterdir()), ["anim.js", "fx.html", "fx.js", "fxcurve.js", "fxlogic.js", "index.html", "map.html",
+                                                                "map.js", "present.wgsl", "rounds.html", "viewer.js"])
+        # map.*: hdkit.view.mapview.webmap; rounds.html: /rounds; fx*: the hdfx effect editor (docs/hdfx-web.md)
 
 
 if __name__ == "__main__":

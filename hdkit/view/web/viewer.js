@@ -157,18 +157,25 @@ async function loadScene(sc) {
     for (const m of p.meshes) {
       const b = await loadBlob(m);
       const w = b.weights ? Float64Array.from(b.weights, x => x / 255) : b.weights_f64;
-      const mesh = {name: m.name, vertices: m.vertices, pos: b.pos, nrm: b.nrm, tan: b.tan, uv: b.uv, tris: b.tris,
-                    joints: m.skinned ? b.joints : null, weights: w};
-      const nt = m.triangles;
-      const vbuf = G.dev.createBuffer({size: nt * 45 * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST});
-      const ub = G.dev.createBuffer({size: G.ufloats * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
-      const bind = mkBind(ub, views.alb, views.nrm, views.orm, G.defaults.mask, G.defaults.strip);
-      const lay = layers.map(L => {
-        const lub = G.dev.createBuffer({size: G.ufloats * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
-        return {name: L.name, ub: lub, bind: mkBind(lub, views.alb, views.nrm, views.orm, L.mask, L.strip)};
-      });
-      D.draws.push({part, mesh, vbuf, count: nt * 3, ub, bind, layers: lay, name: m.name, partName: p.name,
-                    material: m.material, vb: null, dmin: 0, dmax: 0});
+      // one draw per material group with maps of its own (export_web meshes[i].groups), else the whole mesh
+      const gs = m.groups || [{first: 0, count: m.triangles, textures: m.textures || {}, material: m.material}];
+      for (const g of gs) {
+        const mv = {...views};
+        for (const k of ["alb", "nrm", "orm"]) if (g.textures && g.textures[k]) mv[k] = await texture(g.textures[k]);
+        const tris = gs.length > 1 ? b.tris.subarray(g.first * 3, (g.first + g.count) * 3) : b.tris;
+        const mesh = {name: m.name, vertices: m.vertices, pos: b.pos, nrm: b.nrm, tan: b.tan, uv: b.uv, tris,
+                      joints: m.skinned ? b.joints : null, weights: w};
+        const nt = g.count;
+        const vbuf = G.dev.createBuffer({size: nt * 45 * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST});
+        const ub = G.dev.createBuffer({size: G.ufloats * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+        const bind = mkBind(ub, mv.alb, mv.nrm, mv.orm, G.defaults.mask, G.defaults.strip);
+        const lay = layers.map(L => {
+          const lub = G.dev.createBuffer({size: G.ufloats * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+          return {name: L.name, ub: lub, bind: mkBind(lub, mv.alb, mv.nrm, mv.orm, L.mask, L.strip)};
+        });
+        D.draws.push({part, mesh, vbuf, count: nt * 3, ub, bind, layers: lay, name: m.name, partName: p.name,
+                      material: g.material || m.material, vb: null, dmin: 0, dmax: 0});
+      }
     }
     D.parts.push(part);
   }

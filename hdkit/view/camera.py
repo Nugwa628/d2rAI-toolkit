@@ -95,6 +95,12 @@ def key_dir64(key: int) -> int:
     return (int(key) % 8) * 8
 
 
+# Distance of the game camera's eye from the unit it follows (calib captures: 884.5 / 886.5, r3-aura2 thorns_game_view.json
+# 885). Effects read it through view.position (lane r3-overlays: the shrine overlays put their mesh 3 units towards the
+# camera). One value since the r3 integration: hdkit.fx.vm.GAME_EYE_DISTANCE (vm.game_eye, the sim's default eye).
+from ..fx.vm import GAME_EYE_DISTANCE as GAME_EYE_DIST  # noqa: E402
+
+
 @dataclass
 class OrthoCamera:
     el: float = GAME_EL
@@ -111,6 +117,12 @@ class OrthoCamera:
 
     def depth(self, P) -> np.ndarray:
         return np.asarray(P, float) @ self.basis()[2]
+
+    def eye(self, target=(0.0, 0.0, 0.0), dist: float = GAME_EYE_DIST) -> np.ndarray:
+        """The eye position of this view for an effect's view.position: `dist` units from `target` towards the camera
+        (= target + hdkit.fx.vm.game_eye(el, az, dist): one formula for the CLI, fxcast and the sim's default)."""
+        from ..fx import vm
+        return np.asarray(target, float) + vm.game_eye(self.el, self.az, dist).astype(float)
 
     def matrix(self, origin, rect, dmin: float, dmax: float) -> np.ndarray:
         """4x4 (column vectors) world -> clip space of the pixel rectangle rect = (x0, y0, w, h) of an image whose world

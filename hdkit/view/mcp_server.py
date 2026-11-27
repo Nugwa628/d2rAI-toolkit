@@ -28,6 +28,7 @@ from pathlib import Path
 
 from . import cli, rig as rig_mod
 from .. import gpugate
+from ..fx import api as fx_api
 
 INLINE_MAX = int(float(os.environ.get("HDKIT_MCP_INLINE_KB", "256")) * 1024)
 STORE_MIN_MB = float(os.environ.get("HDKIT_MCP_STORE_MB", "16"))
@@ -84,6 +85,17 @@ def gate(wait_s: float = 0.0) -> dict | None:
     return {"refused": True, "why": rd.why, "gate": rd.as_dict(),
             "advice": "GPU jobs wait while a game-slot run holds its lock or the GPU/CPU is busy; ask again later "
                       "(or pass wait_s)"}
+
+
+def _gpu_renderer():
+    """The process's one GPU device, shared by the view_* tools and fx_render."""
+    from . import gpu
+    if _STATE["renderer"] is None:
+        _STATE["renderer"] = gpu.Renderer(msaa=4, aniso=16)
+    return _STATE["renderer"]
+
+
+fx_api.GPU_PROVIDER = _gpu_renderer
 
 
 def _png(path) -> list:
@@ -431,12 +443,121 @@ def build():
                 return wc.show()
         return {"error": "op: tile, obj-add, obj-move, obj-remove, ent-add, ent-move, ent-remove, show"}
 
+    # ---- hdfx effects (hdkit.fx.api, docs/hdfx-mcp.md): thin wrappers; failures come back as {"ok": false, "error": {...}} ----
+    ed = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
+    ex = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False)
+
+    @srv.tool(annotations=ro)
+    def fx_list(pattern: str | None = None, roots: list[str] | None = None, texture: str | None = None,
+                material: str | None = None, kind: str | None = None, limit: int = 200, info: bool = False) -> dict:
+        """List/search D2R HD particle effects (.particles) over the roots: `pattern` substring or glob on the logical path;
+        texture / material / kind (billboard, ribbon, mesh, light) look into the files; info adds kinds and materials."""
+        return fx_api.call("fx_list", pattern=pattern, roots=roots, texture=texture, material=material, kind=kind,
+                           limit=limit, info=info)
+
+    @srv.tool(annotations=ro)
+    def fx_inspect(path: str, roots: list[str] | None = None, graph: bool = True) -> dict:
+        """What an effect is made of: renderers (kind, material, switches, textures), scripts (externals, engine calls),
+        object classes, and the effect graph when available. path: logical path, file or edit session folder."""
+        return fx_api.call("fx_inspect", path=path, roots=roots, graph=graph)
+
+    @srv.tool(annotations=ed)
+    def fx_edit(path: str, ops: list[dict], out: str | None = None, roots: list[str] | None = None,
+                validate: bool = True) -> dict:
+        """Apply edit ops to the effect's working copy (made on first use; the game file is never written), all or nothing.
+        ops: {"op": prop|texture|enable|color|const|script|curve|copy_layer|remove_layer, ...}, see docs/hdfx-mcp.md.
+        Returns the session (undo with fx_session) and fx_validate's answer."""
+        return fx_api.call("fx_edit", path=path, ops=ops, out=out, roots=roots, validate=validate)
+
+    @srv.tool(annotations=wr)
+    def fx_session(out: str, action: str = "status", version: int | None = None) -> dict:
+        """The edit session in `out`: action status, history, undo, redo, reset (version 0) or goto (version)."""
+        return fx_api.call("fx_session", out=out, action=action, version=version)
+
+    @srv.tool(annotations=ro)
+    def fx_validate(path: str, roots: list[str] | None = None, files: bool = True) -> dict:
+        """Is the effect sound: parse, byte-exact round trip, scripts re-assemble, renderers name their files, referenced
+        textures/meshes resolve in the roots (warnings), graph invariants."""
+        return fx_api.call("fx_validate", path=path, roots=roots, files=files)
+
+    @srv.tool(annotations=wr)
+    def fx_create(template: str | None = None, layers: list[dict] | None = None, name: str | None = None,
+                  textures: dict | None = None, logical: str | None = None, out: str | None = None,
+                  roots: list[str] | None = None) -> dict:
+        """A new effect as an edit session: copy of `template` (textures: {old path: new path}) or composed from `layers`
+        [{"from": path, "layer": name, "as": name}]. `logical` is where fx_export will put it."""
+        return fx_api.call("fx_create", template=template, layers=layers, name=name, textures=textures, logical=logical,
+                           out=out, roots=roots)
+
+    @srv.tool(annotations=ro)
+    def fx_script_read(path: str, script: int | None = None, language: str = "cbvm",
+                       roots: list[str] | None = None) -> dict:
+        """List an effect's scripts, or return one (1-based object number) as a CBVM listing (language cbvm) or readable
+        .hfx source (hfx)."""
+        return fx_api.call("fx_script_read", path=path, script=script, language=language, roots=roots)
+
+    @srv.tool(annotations=ed)
+    def fx_script_write(path: str, script: int, source: str, language: str = "auto", out: str | None = None,
+                        roots: list[str] | None = None) -> dict:
+        """Replace one script of the working copy by a CBVM listing or .hfx source (auto: a listing has a .backend line);
+        nothing is saved when it does not parse."""
+        return fx_api.call("fx_script_write", path=path, script=script, source=source, language=language, out=out,
+                           roots=roots)
+
+    @srv.tool(annotations=wr)
+    def fx_render(path: str, t: float = 1.0, clip: dict | None = None, cam: dict | None = None,
+                  context: dict | None = None, size: str = "640x480", format: str = "png", seed: int = 0,
+                  attrs: dict | None = None, bg: str = "#101014", out: str | None = None,
+                  roots: list[str] | None = None, wait_s: float = 0.0):
+        """Draw an effect: a still at time t, or clip {"t0", "t1", "fps"} as numbered PNGs, gif, apng or mp4. context: null,
+        {"kind": "unit", "unit", "clip", "t0", "rate"} (every bone the unit binds the effect to), {"kind": "bone", "unit",
+        "bone"}, {"kind": "missile", "path", "speed", "events"}, {"kind": "skill", "unit",
+        "cast_frame"} or {"kind": "scene", "map", "xy"}. cam: {"preset": orbit|game, az, el, dist, target, ortho}. GPU:
+        refused politely while a game-slot run holds the GPU (wait_s waits). Paths returned; one small PNG inline."""
+        with _LOCK:
+            res = fx_api.call("fx_render", path=path, t=t, clip=clip, cam=cam, context=context, size=size, format=format,
+                              seed=seed, attrs=attrs, bg=bg, out=out, roots=roots, wait_s=wait_s)
+        first = next((f for f in res.get("files", []) if f.endswith(".png")), None)
+        return _content(res, first)
+
+    @srv.tool(annotations=ex)
+    def fx_export(path: str, mod_dir: str, logical: str | None = None, check: bool = True,
+                  extras: list[dict] | None = None, roots: list[str] | None = None) -> dict:
+        """Write the effect into a mod folder at its logical path (<mod_dir>/data/<logical>; mod_dir must not be a game
+        root), plus extras [{"src": file, "logical": path}]; check validates the written file and lists missing files."""
+        return fx_api.call("fx_export", path=path, mod_dir=mod_dir, logical=logical, check=check, extras=extras,
+                           roots=roots)
+
+    @srv.tool(annotations=ro)
+    def fx_coverage(pattern: str | None = None, roots: list[str] | None = None, limit: int = 500,
+                    summary: bool = False) -> dict:
+        """What each effect needs (object classes, renderers, materials, opcodes, externals, engine calls) and, when the
+        survey lane is present, whether it is drawn / partly / not; summary: totals and the commonest needs only."""
+        return fx_api.call("fx_coverage", pattern=pattern, roots=roots, limit=limit, summary=summary)
+
+    @srv.tool(annotations=ro)
+    def fx_fired_by(path: str, index: str | None = None) -> dict:
+        """What fires an effect: status (bound / exe / orphan / manifest / unreferenced), each definition naming it
+        (trigger, entity, timeline mode, bone), the chain up to the skill, state, monster, object, level, item, global
+        table or exe string that loads it, and for unused effects the evidence. index: firedby.json (env HDFX_FIRED_BY)."""
+        return fx_api.call("fx_fired_by", path=path, index=index)
+
+    @srv.tool(annotations=ro)
+    def fx_color_variants(path: str | None = None, roots: list[str] | None = None) -> dict:
+        """The game's colour variants of effects: every ColorVariantIndex with its palette entry (add a casc root), the
+        states that pick one (cold 145, poison 141, ...) and, for path, the renderers that use them. Choose one in
+        fx_render with attrs={"ColorVariantIndex": index or state name}."""
+        return fx_api.call("fx_color_variants", path=path, roots=roots)
+
     return srv
 
 
 TOOL_NAMES = ("view_assets", "view_resolve", "view_camera", "view_gate", "view_render", "view_sheet", "view_turntable",
               "view_rig_load", "view_rig_save", "view_compare", "view_export_web", "view_signoff_sheet",
-              "map_list", "map_info", "map_render", "map_cell", "map_edit_init", "map_edit")
+              "map_list", "map_info", "map_render", "map_cell", "map_edit_init", "map_edit",
+              "fx_list", "fx_inspect", "fx_edit", "fx_session", "fx_validate", "fx_create", "fx_script_read",
+              "fx_script_write", "fx_render", "fx_export", "fx_coverage", "fx_fired_by",
+              "fx_color_variants")
 
 
 def main() -> int:
