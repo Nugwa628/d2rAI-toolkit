@@ -288,7 +288,7 @@ with 0 errors, installs with the game closed, and adds a row to the project's `T
 | Path | What's inside |
 |---|---|
 | [`modkit/`](modkit/) | The Python toolkit (`py -3 -m modkit -h`): CASC reading, tables, strings, UI layouts, sprites/PNG/DC6, HD maps, patch ops, the `skill` op, validator, installer, save editor |
-| [`hdkit/`](hdkit/) | Classic art in HD: the offline HD viewer and renderer (`python -m hdkit.view`, browser page, CASC cache), the map viewer, map tools (`python -m hdkit.maps`: overlays, minimap rows), the in-game sign-off (`python -m hdkit.signoff`, with a pluggable game backend and seat hook), the sprite-to-3D monster scripts (`python -m hdkit.monster3d`, [docs/monster-sprite-to-3d.md](docs/monster-sprite-to-3d.md)), the GPU gate, the art store, GR2 / glTF / texture / DCC formats. Config in `hdkit.toml` |
+| [`hdkit/`](hdkit/) | Classic art in HD: the offline HD viewer and renderer (`python -m hdkit.view`, browser page, CASC cache), the map viewer, map tools (`python -m hdkit.maps`: overlays, minimap rows), the in-game sign-off (`python -m hdkit.signoff`, with a pluggable game backend and seat hook), the HD effects tool (`python -m hdkit.fx`: read, simulate, draw and edit D2R's PopcornFX `.particles`, web editor, [knowledge/hd-effects.md](knowledge/hd-effects.md)), the sprite-to-3D monster scripts (`python -m hdkit.monster3d`, [docs/monster-sprite-to-3d.md](docs/monster-sprite-to-3d.md)), the GPU gate, the art store, GR2 / glTF / texture / DCC formats. Config in `hdkit.toml` |
 | [`mcp/`](mcp/) | Setup of the hdkit MCP server, so an agent can render, compare and inspect models and maps and get pictures back |
 | [`knowledge/`](knowledge/README.md) | How D2R works for modders: limits, new game systems, tables, HD art, layouts, strings, saves, reverse engineering, addresses, debugging, porting |
 | [`.claude/skills/`](.claude/skills/) | Step-by-step guides the agent follows ([list below](#skills)) |
@@ -315,7 +315,7 @@ name it ("use d2r-port").
 | [`d2r-items`](.claude/skills/d2r-items/SKILL.md) | Base items, uniques, sets, runewords, affixes, drops, vendors, item art |
 | [`d2r-monsters`](.claude/skills/d2r-monsters/SKILL.md) | Monsters, bosses, monster skills, spawns, area levels, difficulty |
 | [`d2r-ui`](.claude/skills/d2r-ui/SKILL.md) | Inventory, stash and cube grids, panels, widget layouts, skill tree |
-| [`d2r-hd`](.claude/skills/d2r-hd/SKILL.md) | Classic art in HD: maps and the minimap, monsters as sprite cards or 3D models, effects as flipbooks; viewer first, then one in-game sign-off |
+| [`d2r-hd`](.claude/skills/d2r-hd/SKILL.md) | Classic art in HD: maps and the minimap, monsters as sprite cards or 3D models, effects as flipbooks, D2R's own particle effects; viewer first, then one in-game sign-off |
 | [`d2r-cube`](.claude/skills/d2r-cube/SKILL.md) | Horadric Cube recipes and their condition limits |
 | [`d2r-engine`](.claude/skills/d2r-engine/SKILL.md) | D2RLoader plugins, new engine functions, Ghidra reverse engineering |
 | [`d2r-debug`](.claude/skills/d2r-debug/SKILL.md) | Crashes, asserts, lost characters, wrong behaviour: logs, symptom to cause, bisecting |
@@ -335,6 +335,7 @@ in an area. It's also good reading for human modders.
 | [new-game-systems.md](knowledge/new-game-systems.md) | Planning a new game system: data vs plugin, finding the hooks, where state lives, UI, lanes |
 | [tables.md](knowledge/tables.md) | How D2R reads its `.txt` tables: indexed vs keyed, ids, adding rows safely, per-table notes |
 | [hd-graphics.md](knowledge/hd-graphics.md) | `.sprite` files, item/skill/panel art, HD json maps, overlays, player and monster animation |
+| [hd-effects.md](knowledge/hd-effects.md) | HD particle effects (`.particles`): what the game draws, timing, lighting, and the `hdkit.fx` tools |
 | [ui-layouts.md](knowledge/ui-layouts.md) | The HD layout json: widget tree, grids, panels, tabs, stash, inventory, cube, skill tree |
 | [strings.md](knowledge/strings.md) | String files, whole-file replacement, safe new ids, the printf placeholder trap |
 | [saves.md](knowledge/saves.md) | `.d2s` layout, checksum, retail and D2RLoader extended saves, safe and unsafe edits |

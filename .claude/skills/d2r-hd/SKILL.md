@@ -9,7 +9,7 @@ Rule: **classic is the reference.** HD should show the mod's own art at HD quali
 with a `classic | HD before | HD after` picture at the same spot, and say honestly what is fixed, not fixed and worse.
 
 Read first: knowledge/hd-graphics.md (files and indexes), then the topic page: knowledge/hd-maps.md,
-knowledge/hd-monsters.md, knowledge/hd-viewer.md.
+knowledge/hd-monsters.md, knowledge/hd-viewer.md, knowledge/hd-effects.md.
 
 ## Set up once
 1. A venv with numpy, Pillow, scipy, `wgpu` (renders) and `mcp` (the MCP server). Nothing system-wide.
@@ -72,6 +72,16 @@ knowledge/hd-monsters.md, knowledge/hd-viewer.md.
 2. Each picture becomes a particle flipbook: additive, unlit billboard, size, anchor, timing and light from the tables and
    the DCC. Multi-hue art as three channel layers.
 3. Lanczos 2x for soft glows, x4plus for hard-edged art. Piles of copies need their own gain.
+
+## D2R's own HD effects (knowledge/hd-effects.md)
+D2R draws skill, missile, aura, state and object effects from baked PopcornFX files (`data/hd/vfx/particles/**`).
+`hdkit.fx` reads, simulates, draws, edits and authors them offline:
+1. Inspect: `python -m hdkit.fx info|dis|sim <file.particles>`; what the viewer covers: `python -m hdkit.fx coverage`.
+2. Draw at the game camera: `python -m hdkit.view fx <effect> [--unit <unit json>] --t 1`, a whole cast with
+   `--cast "<skill>" --tables <excel> --toward dx,dy`. GPU jobs wait at the gate.
+3. Edit in the web editor (`python -m hdkit.view fx --port 8766`, docs/hdfx-web.md) or through the `fx_*` MCP tools
+   (docs/hdfx-mcp.md); scripts in the readable language (docs/hdfx-lang.md). Check open accuracy gaps on the
+   knowledge page before trusting absolute brightness or timing, then sign off in game.
 
 ## Outside 3D models
 glTF/GLB or OBJ (CC0 or your own) -> normalise (Y up, height in cells) -> LODs -> `.model` x N + albedo / normal / ORM
