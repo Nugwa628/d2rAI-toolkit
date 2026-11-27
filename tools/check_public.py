@@ -22,6 +22,8 @@ Exit status: 0 clean, 1 hits found, 2 usage error.
     python tools/check_public.py                 scan the whole tracked tree and the branch history
     python tools/check_public.py --staged        scan only what is staged (used by the pre-commit hook)
     python tools/check_public.py --message-file F  scan one commit message (used by the commit-msg hook)
+    python tools/check_public.py --commits='A..B'  scan only these commits' authors and messages (git log
+                                                   revisions; used by the pre-push hook)
     python tools/check_public.py --strip-png     remove text/EXIF chunks from tracked PNG files, in place
 """
 from __future__ import annotations
@@ -387,14 +389,17 @@ def staged_files(root: Path) -> list[str]:
     return [p for p in raw.decode("utf-8", errors="surrogateescape").split("\0") if p]
 
 
-def commits(root: Path, limit: int | None = None):
-    """(sha, {author, committer, message}) for every commit reachable from HEAD."""
+def commits(root: Path, limit: int | None = None, revs: list[str] | None = None):
+    """(sha, {author, committer, message}) for every commit reachable from HEAD, or from the given git log revisions."""
     fmt = "%H%x1f%an <%ae>%x1f%cn <%ce>%x1f%B%x1e"
     args = ["log", f"--format={fmt}"]
     if limit:
         args.append(f"-n{limit}")
+    args += [*(revs or []), "--"]
     res = subprocess.run(["git", "-C", str(root), *args], capture_output=True)
-    if res.returncode != 0:      # no commits yet
+    if res.returncode != 0:      # no commits yet, or a revision git does not know
+        if revs:
+            raise RuntimeError(res.stderr.decode("utf-8", errors="replace").strip())
         return
     for rec in res.stdout.decode("utf-8", errors="replace").split("\x1e"):
         rec = rec.strip("\n")
@@ -446,6 +451,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--staged", action="store_true", help="scan staged content only, no history")
     ap.add_argument("--no-history", action="store_true", help="do not scan commit messages and author fields")
     ap.add_argument("--message-file", help="scan this commit message file only (commit-msg hook)")
+    ap.add_argument("--commits", metavar="REVS",
+                    help="scan only the authors, committers and messages of these commits: git log revisions in one "
+                         "string, e.g. --commits='A..B C --not --remotes=origin' (pre-push hook)")
     ap.add_argument("--strip-png", action="store_true", help="strip text/EXIF chunks from tracked PNG files, then exit")
     ap.add_argument("--quiet", action="store_true", help="print hits only")
     args = ap.parse_args(argv)
@@ -479,6 +487,16 @@ def main(argv: list[str] | None = None) -> int:
 
     allow = Allow.load(Path(args.allow) if args.allow else root / ALLOW_NAME)
     sc = Scanner(terms, allow)
+    if args.commits:
+        ncommits = 0
+        try:
+            for sha, fields in commits(root, revs=args.commits.split()):
+                sc.scan_commit(sha, fields)
+                ncommits += 1
+        except RuntimeError as e:
+            print(f"check_public: git log failed: {e}", file=sys.stderr)
+            return 2
+        return report(sc, tpath, terms, f"{ncommits} commit(s)", args.quiet)
     nfiles = scan_tree(sc, root, args.staged)
     ncommits = 0
     if not args.staged and not args.no_history:

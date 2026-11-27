@@ -1,0 +1,56 @@
+#!/bin/sh
+# Pre-push hook: before a push to GitHub, scan the authors, committers and messages of the commits it sends with
+# tools/check_public.py, so a personal e-mail in a commit's author field never leaves the machine (the pre-commit hook
+# scans only the files, the commit-msg hook only the message). Installed by tools/install_hooks.py.
+# Other remotes (a private forge) are not checked. Runs Git LFS's pre-push step first in repositories that use LFS, the
+# job of the stub Git LFS puts here.
+remote="$1"
+url="$2"
+input=$(cat)
+# Git LFS: only for a repository that uses it (a filter=lfs line in a .gitattributes of a pushed commit, or lfs.url set);
+# elsewhere git lfs pre-push would only ask the server about file locks.
+uses_lfs=""
+if command -v git-lfs >/dev/null 2>&1; then
+	[ -z "$(git config --get lfs.url)" ] || uses_lfs=1
+	for sha in $(printf '%s\n' "$input" | cut -d' ' -f2); do
+		case "$sha" in *[!0]*) ;; *) continue ;; esac
+		git grep -q 'filter=lfs' "$sha" -- .gitattributes '**/.gitattributes' 2>/dev/null && uses_lfs=1
+	done
+fi
+if [ -n "$uses_lfs" ]; then
+	printf '%s\n' "$input" | git lfs pre-push "$@" || exit $?
+fi
+case "$url" in
+	*github.com[:/]*) ;;
+	*) exit 0 ;;
+esac
+root=$(git rev-parse --show-toplevel) || exit 1
+# In a shared hooks folder (core.hooksPath) the hook runs for every repository: only repos whose scanner knows
+# --commits use it.
+grep -q -- '--commits' "$root/tools/check_public.py" 2>/dev/null || exit 0
+revs=""
+new=""
+nl='
+'
+IFS="$nl"
+for line in $input; do
+	IFS=' '
+	# shellcheck disable=SC2086
+	set -- $line                       # <local ref> <local sha> <remote ref> <remote sha>
+	IFS="$nl"
+	case "$2" in *[!0]*) ;; *) continue ;; esac          # deleting a remote branch sends no commits
+	case "$4" in
+		*[!0]*) revs="$revs $4..$2" ;;
+		*) revs="$revs $2"; new=1 ;;                     # a new branch: only what the remote lacks (below)
+	esac
+done
+unset IFS
+[ -n "$revs" ] || exit 0
+[ -z "$new" ] || revs="$revs --not --remotes=$remote"
+for py in python3 python "py -3"; do
+	if $py -c "import sys; sys.exit(sys.version_info < (3, 9))" >/dev/null 2>&1; then
+		exec $py "$root/tools/check_public.py" --root "$root" --quiet --commits="$revs"
+	fi
+done
+echo "pre-push: no Python 3 found, cannot run tools/check_public.py" >&2
+exit 1
