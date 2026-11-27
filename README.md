@@ -362,7 +362,7 @@ in an area. It's also good reading for human modders.
 | [crash-triage.md](knowledge/crash-triage.md) | From a player's crash report to a function and a fix, with a worked example |
 | [d2rloader.md](knowledge/d2rloader.md) | D2RLoader facts and traps, and its internals: the embedded image, the `0xd0` plugin channel, D2RCore's exports |
 | [porting-classic-mods.md](knowledge/porting-classic-mods.md) | Porting a classic mod: inventory, table conversion, fixed ids, function numbers, art order |
-| [plugin-techniques.md](knowledge/plugin-techniques.md) | Plugin recipes: belt refill, buff HUD, weapon swap, waypoint UI, many clients on one machine, plugins under Wine / Proton |
+| [plugin-techniques.md](knowledge/plugin-techniques.md) | Plugin recipes: belt refill, buff HUD, weapon swap, waypoint UI, many clients on one machine, plugins under Wine / Proton, sprite-card facing, overlay cost, keys with a message line |
 | [sdk-gaps.md](knowledge/sdk-gaps.md) | Where plugins still patch the game, and the D2RLoader SDK service that would replace each patch |
 | [modkit-ops.md](knowledge/modkit-ops.md) | Every patch operation `modkit build` understands |
 

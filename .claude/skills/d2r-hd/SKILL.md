@@ -48,7 +48,8 @@ knowledge/hd-monsters.md, knowledge/hd-viewer.md.
    (stock keys skipped; the tool proves stock maps unchanged).
 2. `python -m hdkit.maps automap-art build MOD_DATA --plan PLAN` writes bright legacy cel copies in free cels (never past cel 1498).
 3. `python -m hdkit.maps automap-void build MOD_DATA --plan PLAN` moves walls in the void to a key without a row; review the picks on a world
-   render first.
+   render first. **Leave this step out of release builds:** in the port it comes from it crashed legacy graphics after
+   several areas in one session (`BC_ASSERT n < m_size`), cause not pinned down (hdkit/maps/README.md, "Warning").
 4. Check each map's before / after render (`python -m hdkit.maps automap-render`), legacy and HD.
 
 ## A monster with only classic art (knowledge/hd-monsters.md)

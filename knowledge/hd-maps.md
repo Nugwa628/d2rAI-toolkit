@@ -134,6 +134,13 @@ modes; the minimap leaves them out. A wall counts as unreachable when no walkabl
 small; a map whose thick front walls stand 4-5 cells from their floor needs 6) and it is not next to a roof. Review the
 picks against a world render before shipping: the first pass on one map removed whole room sides.
 
+**Warning: the void step crashed legacy graphics.** In the port, a release candidate with this step crashed the game in
+legacy graphics after several of the mod's areas in one session (`BC_ASSERT: n < m_size`, n 29423, m_size 2048, then
+an access violation in D2RCore; 8 of 8 tours with it, 0 with only its tile files reverted). The cause is not pinned
+down (suspects: many copies on one map, and a stock D2R tile set copied into the mod to append to). The port shipped
+without the step and accepted a few minimap lines into the black; do the same until the cause is known
+([hdkit/maps/README.md](../hdkit/maps/README.md#warning-automap-void-crashed-legacy-graphics)).
+
 ## Open points
 
 - The whole method was checked in game on one map at 4K; the others were checked in the viewer only.
