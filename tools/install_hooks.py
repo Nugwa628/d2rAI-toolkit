@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Install the git hooks from tools/hooks/ into this clone.
 
-    python tools/install_hooks.py            install pre-commit and commit-msg
+    python tools/install_hooks.py            install pre-commit, commit-msg and pre-push
     python tools/install_hooks.py --force    overwrite hooks that did not come from here
     python tools/install_hooks.py --remove   remove the hooks this script installed
 
-The hooks run tools/check_public.py before each commit. It reads banned terms from a file outside the repository
+The hooks run tools/check_public.py before each commit, and on the authors and messages of the commits a push
+sends to GitHub (pre-push; it also runs Git LFS's own pre-push step in repositories that use LFS, so it can replace the
+stub Git LFS installs). It reads banned terms from a file outside the repository
 (~/.d2r-modkit/private_terms.txt, or $D2RAI_PRIVATE_TERMS); without one it still runs the generic checks.
 """
 from __future__ import annotations
@@ -18,7 +20,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-HOOKS = ("pre-commit", "commit-msg")
+HOOKS = ("pre-commit", "commit-msg", "pre-push")
 MARK = "tools/check_public.py"
 
 

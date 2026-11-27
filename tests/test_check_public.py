@@ -288,6 +288,23 @@ class RepoTests(unittest.TestCase):
         self.assertIn(":author: [email]", out)
         self.assertNotIn("real.person", out)
 
+    def test_commits_scans_only_the_given_range(self):
+        self.commit(files={"a.md": "ok\n"})
+        git(self.repo, "config", "user.email", "real.person@gmail.com")
+        self.commit(msg="second", files={"b.md": "x\n"})
+        git(self.repo, "config", "user.email", "tester@users.noreply.github.com")
+        self.commit(msg="third", files={"c.md": "y\n"})
+        rc, out, _ = self.scan("--commits=HEAD~1..HEAD")
+        self.assertEqual(rc, 0, out)
+        rc, out, _ = self.scan("--commits=HEAD~2..HEAD")
+        self.assertEqual(rc, 1)
+        self.assertIn(":author: [email]", out)
+        self.assertNotIn("real.person", out)
+        rc, out, _ = self.scan("--commits=HEAD --not HEAD~1")
+        self.assertEqual(rc, 0, out)
+        rc, _, _ = self.scan("--commits=no-such-rev")
+        self.assertEqual(rc, 2)
+
     def test_missing_terms_file_runs_generic_checks(self):
         self.commit(files={"a.md": "mail me at someone@gmail.com\n"})
         rc, out, err = run_main("--root", str(self.repo), "--terms", str(self.terms) + ".missing")
@@ -413,6 +430,40 @@ class HookTests(unittest.TestCase):
         (self.repo / "ok2.md").write_text("fine too\n")
         git(self.repo, "add", "ok2.md")
         self.assertNotEqual(commit("mention " + TERM).returncode, 0)
+
+    @unittest.skipUnless(shutil.which("sh") and shutil.which("git"), "needs sh and git")
+    def test_pre_push_blocks_a_personal_email_bound_for_github(self):
+        (self.repo / "tools").mkdir()
+        shutil.copy(ROOT / "tools" / "check_public.py", self.repo / "tools" / "check_public.py")
+        quiet_install(["--root", str(self.repo)])
+        env = dict(os.environ, **GIT_ENV)
+        env[cp.ENV_TERMS] = str(Path(self._tmp.name) / "no-terms.txt")
+        hook = self.repo / ".git" / "hooks" / "pre-push"
+        zero = "0" * 40
+
+        def commit(email, name):
+            (self.repo / name).write_text(name + "\n")
+            git(self.repo, "add", name)
+            subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=T", "-c", f"user.email={email}", "commit",
+                            "-q", "-m", name], check=True, capture_output=True, env=env)
+            return git(self.repo, "rev-parse", "HEAD").stdout.strip()
+
+        def push(url, local, remote=zero):
+            return subprocess.run(["sh", str(hook), "origin", url], input=f"refs/heads/main {local} refs/heads/main "
+                                  f"{remote}\n", capture_output=True, text=True, cwd=self.repo, env=env)
+
+        good = commit("t@users.noreply.github.com", "a.md")
+        res = push("https://github.com/o/r.git", good)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        bad = commit("real.person@gmail.com", "b.md")
+        res = push("git@github.com:o/r.git", bad)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertNotIn("real.person", res.stdout + res.stderr)
+        self.assertNotEqual(push("https://github.com/o/r.git", bad, good).returncode, 0)
+        self.assertEqual(push("https://forge.example.org/o/r.git", bad).returncode, 0)     # other remotes: not checked
+        later = commit("t@users.noreply.github.com", "c.md")
+        self.assertEqual(push("https://github.com/o/r.git", later, bad).returncode, 0)      # only what the push sends
+        self.assertEqual(push("https://github.com/o/r.git", zero, bad).returncode, 0)       # deleting a branch
 
 
 if __name__ == "__main__":
