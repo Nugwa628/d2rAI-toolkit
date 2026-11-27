@@ -13,6 +13,8 @@ Commands:
   compare <render.png> <shot.png> --shot-feet x,y (--twin <shot without the unit> | --mask <png|npy>) [--exclude ...]
                       silhouette IoU (at the feet and at the best shift), luma p50s, cap colour (hdkit.view.compare)
   gate                may a GPU job run now (slot locks, GPU and CPU load)
+  fx <effect> [--unit <unit json>] --t 1 [--frames N]   a PopcornFX effect drawn alone or on a unit (hdkit.view.fxcli);
+                      fx [--port 8766] without an effect starts the web editor (hdkit.view.fxeditor)
   map <command> ...   the map viewer: classic / HD map renders, side-by-side sheets, cell info, working-copy edits
                       (hdkit.view.mapview, knowledge/hd-viewer.md)
 
@@ -501,6 +503,12 @@ def main(argv=None) -> int:
     if argv[:1] == ["map"]:
         from .mapview import cli as mapcli
         return mapcli.main(argv[1:])
+    if argv[:1] == ["fx"]:
+        if len(argv) > 1 and not argv[1].startswith("-"):       # fx <effect> ...: render it; fx [--port ...]: the editor
+            from . import fxcli
+            return fxcli.main(argv[1:])
+        from . import fxeditor
+        return fxeditor.main(argv[1:])
     a = build_parser().parse_args(argv)
     if a.cmd in ("ls", "resolve", "camera", "gate"):
         r = info_cmd(a)

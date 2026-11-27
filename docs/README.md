@@ -37,6 +37,7 @@ The [knowledge base](../knowledge/README.md) is the reference for the engine and
 | Tables (`.txt`) | [tables.md](../knowledge/tables.md) |
 | Strings | [strings.md](../knowledge/strings.md) |
 | HD art, sprites, animations | [hd-graphics.md](../knowledge/hd-graphics.md) |
+| HD particle effects: reading, simulating, drawing and editing `.particles` | [hd-effects.md](../knowledge/hd-effects.md); interfaces in [hdfx.md](hdfx.md), with [hdfx-shaders.md](hdfx-shaders.md), [hdfx-vm-re.md](hdfx-vm-re.md), [hdfx-lang.md](hdfx-lang.md), [hdfx-mcp.md](hdfx-mcp.md), [hdfx-web.md](hdfx-web.md), [hdfx-cull.md](hdfx-cull.md) |
 | HD UI layouts | [ui-layouts.md](../knowledge/ui-layouts.md) |
 | Saves | [saves.md](../knowledge/saves.md) |
 | D2RLoader on players' machines | [d2rloader.md](../knowledge/d2rloader.md) |

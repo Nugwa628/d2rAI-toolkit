@@ -184,10 +184,15 @@ def decode_direction(data: bytes, frame_count: int):
     return dx0, dy0, dw, dh, frames
 
 
-def decode(data: bytes):
-    if data[0] != SIGNATURE:
+def frame_count(data: bytes) -> int:
+    """Frames per direction from the DCC header."""
+    if len(data) < 15 or data[0] != SIGNATURE:
         raise ValueError("not a DCC file")
+    return struct.unpack_from("<I", data, 3)[0]
+
+
+def decode(data: bytes):
+    fpd = frame_count(data)
     dirs = data[2]
-    fpd = struct.unpack_from("<I", data, 3)[0]
     offs = list(struct.unpack_from(f"<{dirs}I", data, 15)) + [len(data)]
     return [decode_direction(data[offs[d]:offs[d + 1]], fpd) for d in range(dirs)]

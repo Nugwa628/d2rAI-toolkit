@@ -85,6 +85,27 @@ class Skeleton:
     def rest_locals(self) -> np.ndarray:
         return np.stack([compose(*r) for r in self.rest])
 
+    def rebased(self, full: "Skeleton") -> "Skeleton | None":
+        """This (a model's embedded) skeleton re-parented on `full` (the unit's .skeleton file) when every bone of this one
+        is in `full` and `full` holds bones this one lacks above them: the hierarchy and rest pose come from `full`, the
+        inverse world transforms of the bones this one has stay its own (they match the mesh's vertices), the extra
+        bones get `full`'s. None when nothing would change. D2R poses a unit on its skeleton file: Mephisto's model
+        skeleton drops root/translate/anim/cog, so its spine_01 and pelvis become roots there and the hover height
+        carried by `cog` is lost (calib r3: the game's bone palette matches the file skeleton to 0.006)."""
+        if not set(self.names) <= set(full.names) or len(full.names) == len(self.names) and all(
+                (self.parent[i] < 0) == (full.parent[full.idx[n]] < 0) for i, n in enumerate(self.names)):
+            return None
+        out = Skeleton.__new__(Skeleton)
+        out.name = full.name
+        out.names = list(full.names)
+        out.parent = list(full.parent)
+        out.idx = dict(full.idx)
+        out.rest = list(full.rest)
+        out.iwt = np.array(full.iwt)
+        for n, i in self.idx.items():
+            out.iwt[out.idx[n]] = self.iwt[i]
+        return out
+
     def bind_error(self) -> float:
         """Largest |W_rest IWT - I| over all bones: 0 when the rest pose is the bind pose."""
         S = self.worlds(self.rest_locals()) @ self.iwt
@@ -220,12 +241,17 @@ class Mesh:
     joints: np.ndarray | None = None
     weights: np.ndarray | None = None
     params: dict = field(default_factory=dict)   # material: alpha_cut, blend, emissive, double_sided (material_params)
+    col: np.ndarray | None = None     # (N, 4) uint8 vertex colours (DiffuseColor0), when the mesh has them
+    groups: list = field(default_factory=list)   # every material group: (tri_first, tri_count, maps, params); maps and
+    #                                              params above are the first group's. The game draws each group on its
+    #                                              own with its own textures (Mephisto's body_meshShape: 3 draws, body_2,
+    #                                              bones, eyes_head_2; RenderDoc calib r3 eids 24399/24407/24415).
 
 
 def material_params(material) -> dict:
     """How a D2R material draws, from its ExtendedData: AlphaThreshold (or PrimaryAlphaThreshold when enabled) -> alpha_cut;
     AlphaIntensity -> blend (alpha-blended, alpha x intensity; with a threshold too, the cut wins); EmissiveIntensity ->
-    emissive (x MaskTexture); IsDoubleSided."""
+    emissive (x (1 - ORM alpha), as the game's ps_models); IsDoubleSided."""
     out = {}
     if material is None or material.get("ExtendedData") is None:
         return out
@@ -245,6 +271,15 @@ def material_params(material) -> dict:
         out["emissive"] = float(g("EmissiveIntensity"))
     if g("IsDoubleSided") if "IsDoubleSided" in keys else False:
         out["double_sided"] = True
+    if "technique" in keys and str(g("technique")) == "WaterMaterial":     # the game's water_p (lane r3-calibfix)
+        out["water"] = {k: (list(map(float, g(k))) if isinstance(g(k), (list, tuple)) else float(g(k)))
+                        for k in ("ShallowAlbedo", "DeepAlbedo", "ShallowAlpha", "DeepAlpha", "Roughness", "FoamAlbedo",
+                                  "WaterTransmissionDistanceMax", "ShoreFoamDepth", "ShoreFoamTextureScale",
+                                  "WaterFlowNormalIntensity", "WaterFlowNormalTextureScale",
+                                  "WaterFlowNormalDetailTextureScale", "WaterFlowNormalDetailIntensity",
+                                  "WaterFlowNormalSpeed", "WaterFlowIntensity", "WaterFlowDirection",   # the flow (r4-glow)
+                                  "ShoreFoamAnimationSpeed", "UseFlowTexture")
+                        if k in keys and g(k) is not None}
     return out
 
 
@@ -254,14 +289,18 @@ def load_meshes(data: bytes):
     meshes = []
     for m in tree["Meshes"]:
         d = hd_gltf.decode_mesh(m)
-        maps, prm = {}, {}
-        for (mat, _f, _c) in d["groups"][:1]:
+        groups = []
+        for (mat, first, count) in d["groups"]:
+            gm, gp = {}, {}
             if mat < len(m["MaterialBindings"]):
-                maps = {k: v for k, v in hd_gltf._maps(m["MaterialBindings"][mat]["Material"]).items() if v}
-                prm = material_params(m["MaterialBindings"][mat]["Material"])
+                gm = {k: v for k, v in hd_gltf._maps(m["MaterialBindings"][mat]["Material"]).items() if v}
+                gp = material_params(m["MaterialBindings"][mat]["Material"])
+            groups.append((int(first), int(count), gm, gp))
+        maps, prm = (groups[0][2], groups[0][3]) if groups else ({}, {})
         meshes.append(Mesh(m["Name"], d["pos"], d["nrm"], d["tan"], d["uv"].astype(float), d["tris"], maps,
                            [b["BoneName"] for b in m["BoneBindings"]],
-                           d.get("joints"), None if d.get("weights") is None else d["weights"] / 255.0, prm))
+                           d.get("joints"), None if d.get("weights") is None else d["weights"] / 255.0, prm,
+                           d.get("col"), groups))
     sks = tree["Skeletons"]
     return meshes, (Skeleton(sks[0]) if sks else None)
 

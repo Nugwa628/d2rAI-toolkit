@@ -155,8 +155,8 @@ def select(sc, fr: Frame, layers: set, cull: bool = True):
 
 
 def preset_lights(fs, logical: str, gain: float = LIGHT_GAIN):
-    """Point lights of a preset, and its spot lights as points (half way along the spot's axis, radius its distance x
-    tan(angle / 2) + half the distance): [{name, pos, radius, color, atten}] in the renderer's form."""
+    """Point lights of a preset, and its spot lights as points (half way along the spot's axis, the transform's +Z as the
+    game's spot matrix has it, radius its distance x tan(angle / 2) + half the distance): [{name, pos, radius, color, atten}] in the renderer's form."""
     d = preset._read_json(fs, logical)
     out = []
     for ent in d.get("entities", []):
@@ -173,7 +173,7 @@ def preset_lights(fs, logical: str, gain: float = LIGHT_GAIN):
         if pl:
             rad = float(pl.get("radius", 10.0))
         else:
-            fwd = M[:3, :3] @ np.array([0.0, 0.0, -1.0])
+            fwd = M[:3, :3] @ np.array([0.0, 0.0, 1.0])     # the travel direction is +Z (view/shadow.spot_from_preset)
             fwd /= max(np.linalg.norm(fwd), 1e-9)
             dist = float(sl.get("distance", 20.0))
             pos = pos + fwd * dist * 0.5

@@ -178,7 +178,9 @@ def value_curve(v, brightness: float = 0.0, points=(0.25, 0.25, 0.75, 0.99), str
     HSV and V becomes (V + cb2[19].y x poly(sat(V))) x (1 + cb2[19].x), hue and saturation kept; poly = cb2[18] .
     (1, V, V^2, V^3). The CPU code that fills cb2[18..19] was not found, so the mapping is a hypothesis: poly = P(V) - V
     with P the cubic through (0, 0), the vis characterContrastPoints and (1, 1), strength = cb2[19].y, brightness =
-    cb2[19].x. Identity at the defaults."""
+    cb2[19].x. Identity at the defaults. The RenderDoc capture (calib r3, lane unitlight) shows the poly is P itself, not
+    P - V: (0, 0.36, 3.2, -2.56) with strength 0.4 (characterBrightnessFactor); shaders.wgsl game_shade does that in the
+    model pass. This function is kept as it was for the rigs that use `vc=`."""
     v = np.asarray(v, float)
     V = v.max(-1)
     x0, y0, x1, y1 = points
@@ -214,3 +216,106 @@ def bloom(v, cutoff: float = 1.0, intensity: float = 1.0, levels: int = 5, gain:
         z = ndimage.zoom(x, (v.shape[0] / x.shape[0], v.shape[1] / x.shape[1], 1), order=1)
         acc += z[:v.shape[0], :v.shape[1]]
     return acc * (intensity * gain / max(levels, 1))
+
+
+# ---- the game's bloom (lane r3-lighting2; RenderDoc r3-calibfix r4 frame 4268, Fire Bolt, Blood Moor: Postprocess / Bloom
+# draws 21234-21467, their SPIR-V and constant blocks). Before Atmosphere and the Universal CLUT, on the exposed scene:
+#   cutoff (ps_bloom_cutoff_p, full res): c = luma < bloomCutoff ? 0 : c / (1 + luma)      (cb value[0] = 1.0)
+#   6 downsamples (ps_bloom_downsample_p, BLOOM_BLUR_SAMPLES 9) to half size each (1600x900 -> 800x450 ... 25x14): taps at
+#     (+-1.675, +-1.675) x 1/16, (0, +-1.75) and (+-1.75, 0) x 1/8, centre x 1/4 source texels, bilinear
+#   5 upsamples (ps_bloom_apply_p, 9 taps): a 3x3 tent (1 2 1)^2 / 16 at +-1 source texel, ADDED onto the next larger mip
+#     (blend FactorRGB x src + dst, factor 1)
+#   final apply into the scene: the same tent of mip 0 at full res + blue noise x 0.001562, blend factor 0.2 (the frame's
+#     bloomIntensity 1.0: GAME_BLOOM_SCALE x intensity; one capture, so the 0.2 per unit intensity is the reading of it).
+GAME_BLOOM_SCALE = 0.2
+BLOOM_LEVELS = 6
+
+
+def r11g11b10(x):
+    """x stored in an R11G11B10_FLOAT target as the game's GPU does it: mantissas truncated toward zero (6, 6, 5 bits),
+    negatives to 0 (r4 capture: every bloom store loses 0.6 % on average, which this reproduces)."""
+    x = np.maximum(np.asarray(x, np.float32), 0.0)
+    out = np.empty_like(x)
+    for k, mb in enumerate((6, 6, 5)):
+        c = x[..., k]
+        e = np.floor(np.log2(np.maximum(c, 2.0 ** -14)))
+        q = 2.0 ** (e - mb)
+        out[..., k] = np.where(c < 2.0 ** -14, np.floor(c / 2.0 ** -20) * 2.0 ** -20, np.floor(c / q) * q)
+    return np.minimum(out, 65024.0).astype(np.float32)
+
+
+def _sample(img, u, v):
+    """Bilinear sample of img (h, w, 3) at normalised uv arrays (clamp to edge), as a texture unit does."""
+    from scipy.ndimage import map_coordinates
+    h, w = img.shape[:2]
+    y = np.clip(v * h - 0.5, 0.0, h - 1.0)
+    x = np.clip(u * w - 0.5, 0.0, w - 1.0)
+    return np.stack([map_coordinates(img[..., k], [y, x], order=1, mode="nearest") for k in range(img.shape[2])], -1)
+
+
+def _grid(w, h):
+    return np.meshgrid((np.arange(w) + 0.5) / w, (np.arange(h) + 0.5) / h)
+
+
+def _down9(src):
+    h, w = src.shape[:2]
+    ow, oh = max(1, w // 2), max(1, h // 2)
+    u, v = _grid(ow, oh)
+    tx, ty = 1.0 / w, 1.0 / h
+    taps = [(0, 0, 0.25), (0, -1.75, 0.125), (0, 1.75, 0.125), (-1.75, 0, 0.125), (1.75, 0, 0.125),
+            (-1.675, -1.675, 0.0625), (1.675, -1.675, 0.0625), (-1.675, 1.675, 0.0625), (1.675, 1.675, 0.0625)]
+    return sum(wt * _sample(src, u + dx * tx, v + dy * ty) for dx, dy, wt in taps)
+
+
+def _tent(src, w, h):
+    sh, sw = src.shape[:2]
+    u, v = _grid(w, h)
+    tx, ty = 1.0 / sw, 1.0 / sh
+    W = (0.25, 0.5, 0.25)
+    return sum(W[i + 1] * W[j + 1] * _sample(src, u + i * tx, v + j * ty) for i in (-1, 0, 1) for j in (-1, 0, 1))
+
+
+def game_bloom(v, cutoff: float = 1.0, intensity: float = 1.0, levels: int = BLOOM_LEVELS, store=r11g11b10):
+    """The light the game's bloom adds to an exposed HDR image v (H, W, 3) (the chain above, without the dither):
+    0.2 x intensity x tent(mip 0) after the cascade; every intermediate target stored as the game's R11G11B10 (`store`;
+    None: exact floats). Resolution-dependent as in the game (texel offsets)."""
+    st = store or (lambda x: np.asarray(x, np.float32))
+    v = np.asarray(v, np.float32)
+    H, W = v.shape[:2]
+    y = v @ LUMA.astype(np.float32)
+    c = st(np.where((y < cutoff)[..., None], 0.0, v / (1.0 + y)[..., None]))
+    mips = [c]
+    for _ in range(levels):
+        if min(mips[-1].shape[:2]) < 2:
+            break
+        mips.append(st(_down9(mips[-1])))
+    mips = mips[1:]                                    # mip 0 = the first half-size level
+    for k in range(len(mips) - 2, -1, -1):
+        h, w = mips[k].shape[:2]
+        mips[k] = st(mips[k] + _tent(mips[k + 1], w, h))
+    return (GAME_BLOOM_SCALE * float(intensity)) * _tent(mips[0], W, H)
+
+
+_CLUTS = {}
+
+
+def clut(v, path):
+    """The game's post pass (ps of "Postprocess", RenderDoc calib r3 eid 28385, lane unitlight): exposed scene rgb (..., 3)
+    -> display sRGB, out = CLUT(PQ(v x 0.008)), a 65^3 "Universal CLUT" (tone curve and grading together) sampled
+    trilinearly at PQ x 65 - 0.5 texels. `path`: the LUT as .npy (65, 65, 65, 3), indexed [b, g, r] (texture z, y, x).
+    Reproduces the captured pass output to 0.0008 (mean abs, 1600x900 frame)."""
+    from scipy.ndimage import map_coordinates
+    if isinstance(path, np.ndarray):
+        L = path
+    else:
+        L = _CLUTS.get(str(path))
+        if L is None:
+            if str(path).startswith("game:"):
+                raise KeyError("CLUT %s not built in this process (view/clut.register)" % path)
+            L = _CLUTS[str(path)] = np.asarray(np.load(path), np.float32)
+    v = np.maximum(np.asarray(v, float), 0.0)
+    c = np.clip(pq_enc(v * SCALE) * L.shape[0] - 0.5, 0.0, L.shape[0] - 1.0)
+    flat = c.reshape(-1, 3)
+    out = np.stack([map_coordinates(L[..., k], [flat[:, 2], flat[:, 1], flat[:, 0]], order=1, mode="nearest")
+                    for k in range(3)], -1)
+    return out.reshape(c.shape)

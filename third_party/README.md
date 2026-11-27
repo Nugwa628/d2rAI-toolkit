@@ -21,6 +21,12 @@ Details per file are in [hdkit/THIRD_PARTY.md](../hdkit/THIRD_PARTY.md).
 | `hdkit/view/gr2.py` | Reimagined Level Editor, pose and skinning rules | MIT |
 | `hdkit/view/classic.py` | Reimagined D2R Mod Studio, COF layer order | MIT |
 | `hdkit/formats/d2r_model.py` | pybg3 / libbg3, BitKnit2 decompression as documented | MIT |
+| `hdkit/fx/schema.py`, `pfile.py`, `graph.py`, `rspec.py`, `routing.py` | Reimagined D2R Mod Studio, `.particles` layout and field schema (which credits Retera's PKBlaster, MIT) | MIT |
+| `hdkit/fx/samplers.py`, `packers.py` | PopcornFX-Web (AallynReed), curves, shapes, turbulence, rand, billboard and ribbon maths | MIT |
+| `hdkit/fx/context.py`, `wallcast.py`, `firemakers.py` | D2MOO (The Phrozen Keep community), seed, Charged Bolt path, Fire Wall and fire-maker layouts, skill calcs | MIT |
+| `hdkit/view/assao.py` | Intel ASSAO, the game's screen-space AO (read from its shaders) | MIT |
+| `hdkit/view/fx.wgsl` (`fs_water` noise) | Ashima Arts / Stefan Gustavson webgl-noise, 2D simplex noise | MIT |
+| `hdkit/fx/lang/` | PopcornFX-Web's script syntax (read, no code taken) | MIT |
 
 Everything else (modkit, hdkit including `hdkit/monster3d/` and `hdkit/sprite3d/`, testing, release, the downloader) is
 our own code.
@@ -48,6 +54,9 @@ The standard library covers modkit, testing, release and the downloader.
 | realesrgan-ncnn-vulkan, <https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan> | MIT (the ncnn build) | optional 4x upscale of classic frames and map atlases | its models (realesrgan-x4plus) are BSD-3-Clause; download them yourself |
 | TripoSG, <https://github.com/VAST-AI-Research/TripoSG> | MIT (code and weights) | not used by any shipped code; the image-to-3D route that was researched and found weaker than hand building | weights never go in git; see docs/monster-sprite-to-3d.md if you want to try it |
 | Ghidra, <https://ghidra-sre.org> | Apache-2.0 | reverse engineering (`tools/ghidra_scripts/`, `tools/ghidra_*.ps1`); run by you, never bundled | |
+| RenderDoc 1.47, <https://renderdoc.org> | MIT | `hdkit.fx.calib` game captures (capture layer through `VK_LAYER_PATH`, its Python runs `rd_trigger.py` / `rd_extract.py`) | `HDKIT_RENDERDOC` names your unpacked copy |
+| vkd3d-shader 2.2 and SPIRV-Cross | LGPL-2.1 and Apache-2.0 | reading the game's particle shaders (docs/hdfx-shaders.md); analysis only | no code taken, nothing bundled |
+| unicorn 2.1.4 | GPL-2.0 | verification only: ran D2R.exe's noise kernels to pin test values | not a dependency, nothing shipped |
 
 ## Left out on purpose
 

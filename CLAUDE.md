@@ -11,7 +11,7 @@ with the game under Proton (`docs/linux.md`).
 - `hdkit/`: classic art in HD and the offline HD viewer (`python -m hdkit.view`, `python -m hdkit.maps`,
   `python -m hdkit.signoff`, the sprite-to-3D monster scripts `python -m hdkit.monster3d`; config `hdkit.toml`, from `hdkit/hdkit.example.toml`). `mcp/`: its MCP server for agents.
   Large outputs go to the art store, never into git. HD topics: `knowledge/hd-maps.md`, `knowledge/hd-monsters.md`,
-  `knowledge/hd-viewer.md`.
+  `knowledge/hd-viewer.md`, `knowledge/hd-effects.md` (HD particle effects: `python -m hdkit.fx`, `python -m hdkit.view fx`).
 - `knowledge/`: what D2R hard-codes and how its files work (limits, tables, strings, layouts, saves, HD graphics,
   reverse engineering, debugging). Read `knowledge/engine-limits.md` before designing anything big, and the topic
   file before working in an area. A whole new game system (for example a mapping system) starts with
